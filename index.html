@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="A fast, dependency-free dynamic geometry drawer: constructions, conics, functions, transforms and measurements.">
+<meta name="robots" content="noindex">
+<title>Geometry Drawer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 19L12 4l8 15z' fill='%23a0522d33' stroke='%23333' stroke-width='1.6'/%3E%3Ccircle cx='12' cy='13' r='6' fill='none' stroke='%23333' stroke-width='1.4'/%3E%3Ccircle cx='4' cy='19' r='2.4' fill='%232457d6'/%3E%3Ccircle cx='12' cy='4' r='2.4' fill='%232457d6'/%3E%3Ccircle cx='20' cy='19' r='2.4' fill='%232457d6'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header id="bar">
+  <button id="btnAlgebra" class="ib" title="Show / hide algebra view" aria-label="Algebra view">
+    <svg viewBox="0 0 24 24" class="ic"><path d="M4 6h16M4 12h10M4 18h13" class="s"/></svg>
+  </button>
+  <nav id="tools" aria-label="Tools"></nav>
+  <div class="right">
+    <button id="btnUndo" class="ib" title="Undo (Ctrl+Z)" aria-label="Undo"><svg viewBox="0 0 24 24" class="ic"><path d="M9 7L4 12l5 5M4 12h11a5 5 0 0 1 0 10h-2" class="s"/></svg></button>
+    <button id="btnRedo" class="ib" title="Redo (Ctrl+Y)" aria-label="Redo"><svg viewBox="0 0 24 24" class="ic"><path d="M15 7l5 5-5 5M20 12H9a5 5 0 0 0 0 10h2" class="s"/></svg></button>
+    <button id="btnMenu" class="ib" title="Menu" aria-label="Menu"><svg viewBox="0 0 24 24" class="ic"><circle cx="12" cy="5" r="1.8" class="fc"/><circle cx="12" cy="12" r="1.8" class="fc"/><circle cx="12" cy="19" r="1.8" class="fc"/></svg></button>
+  </div>
+</header>
+<div id="flyout" hidden></div>
+<div id="menu" hidden></div>
+<main>
+  <aside id="algebra" aria-label="Algebra view">
+    <div id="alist"></div>
+    <form id="inputForm" autocomplete="off">
+      <div id="suggest" hidden></div>
+      <input id="input" placeholder="Input: A = (1, 2), Circle(A, 3), y = 2x + 1 …" spellcheck="false" autocapitalize="off" aria-label="Input bar">
+      <div id="inputErr" role="alert"></div>
+    </form>
+  </aside>
+  <section id="stage">
+    <canvas id="cv" aria-label="Drawing canvas" tabindex="0"></canvas>
+    <div id="hint"></div>
+    <div id="zoom">
+      <button id="zin" class="ib" title="Zoom in (+)" aria-label="Zoom in"><svg viewBox="0 0 24 24" class="ic"><path d="M12 5v14M5 12h14" class="s"/></svg></button>
+      <button id="zout" class="ib" title="Zoom out (−)" aria-label="Zoom out"><svg viewBox="0 0 24 24" class="ic"><path d="M5 12h14" class="s"/></svg></button>
+      <button id="zfit" class="ib" title="Fit all (F)" aria-label="Fit all"><svg viewBox="0 0 24 24" class="ic"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" class="s"/></svg></button>
+    </div>
+    <div id="props" hidden></div>
+  </section>
+</main>
+<dialog id="dlg"></dialog>
+<div id="help" hidden></div>
+<div id="toast" role="status"></div>
+<input type="file" id="file" accept=".json,application/json" hidden>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
