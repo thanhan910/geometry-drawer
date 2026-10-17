@@ -6,10 +6,9 @@ to `server-g5-setup-01`; do not restate it here.
 
 ## Current position
 
-Deployed at `/geometry/`, tailnet only, from `/var/www/geometry`. 52 engine
-tests and the headless browser smoke test pass. The GitHub repository has not
-been created yet. The operator creates it in the browser (the `gh` token here
-cannot), and then `git push -u origin main` works.
+Deployed at `/geometry/`, **public** since 2026-10-18 (operator decision),
+from `/var/www/geometry`. 52 engine tests and the headless browser smoke test
+pass. Pushed to GitHub (`origin/main`).
 
 ## How it works
 
@@ -52,8 +51,9 @@ calls `recompute(from)`.
 - **Commands return `null` for a wrong signature.** `call()` then raises the
   usage message from `HELP`. Return `UNDEF` only for valid input with no
   result.
-- `/agents/` and the host's exposure table are the authority on who can reach
-  `/geometry/`. Keep it tailnet-only unless the operator decides otherwise.
+- **Public, so nothing server-side.** The workspace exposure table is the
+  authority on who can reach `/geometry/`. Adding any server storage or API
+  would need a new exposure decision first.
 
 ## Gotchas
 
@@ -74,6 +74,5 @@ calls `recompute(from)`.
 
 ## Next
 
-1. Create the GitHub repository and push.
-2. Possible additions: a construction-protocol view, SVG export,
+1. Possible additions: a construction-protocol view, SVG export,
    copy and paste of objects, label dragging, and lists and sequences.

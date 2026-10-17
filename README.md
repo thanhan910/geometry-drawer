@@ -4,9 +4,9 @@ A dynamic geometry drawer in the spirit of GeoGebra's Geometry and Graphing
 apps, built to be quick: one static page, no framework, no build step, no
 server. It opens instantly, and every tool has a one-key shortcut.
 
-**URL:** `https://nbg5pc.taileeca1e.ts.net/geometry/`, **tailnet only**. It is
-a static page with no data on the server, so making it public is a one-line
-Nginx change, but that has not been decided.
+**URL:** `https://nbg5pc.taileeca1e.ts.net/geometry/`, **public** (operator
+decision, 2026-10-18). It is a static page: constructions stay in the
+visitor's browser, and nothing is stored on the server.
 
 ## What it does
 
@@ -70,7 +70,7 @@ To develop locally, serve the folder with any static server, for example
 Nothing to do: it is static files in `/var/www/geometry`, served by Nginx.
 To check it, run
 `bash ~/Documents/GitHub/server-g5-setup-01/scripts/verify-deployment.sh`,
-which asserts the page loads on the tailnet and returns 403 publicly. If the
+which asserts the page and its script load, on the tailnet and publicly. If the
 page is missing, run `bash scripts/deploy.sh` again.
 
 ## Not included
