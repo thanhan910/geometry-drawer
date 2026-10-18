@@ -106,7 +106,11 @@ The **Script** tab, above the algebra list, runs whole programs.
 
 ### AI assistants (MCP)
 
-An MCP server lets Claude, or any MCP client, draw from plain language. The
+An MCP server lets Claude, ChatGPT or any MCP client draw from plain language.
+In chats that support **MCP Apps** (Claude and ChatGPT do), the figure appears
+**inside the conversation** as a live widget. It runs the app's own engine,
+so you can drag points, zoom and pan, with buttons for Fit, Reset, Fullscreen
+and *Open in app*. Other clients get the picture and the link. The
 assistant writes a script, and the server runs it with the app's own engine.
 It returns errors by line, a PNG preview the assistant can look at, every
 object's value, and true/false checks re-tested on 40 random positions. It
@@ -118,6 +122,9 @@ title and explanation on a card.
   `/geometry-mcp/`.
 - **Claude (web or desktop):** Settings, then Connectors, then *Add custom
   connector*, and paste the URL.
+- **ChatGPT:** Settings, then Apps & Connectors (or Plugins, then MCPs, in
+  the desktop app). Add a custom MCP of type Streamable HTTP with the URL,
+  and leave the token and header fields empty.
 - **Claude Code:**
   `claude mcp add --transport http geometry https://nbg5pc.taileeca1e.ts.net/geometry-mcp/mcp`
 - **Tools:** `geometry_language` returns the reference, and `draw_geometry`
@@ -144,7 +151,8 @@ Press `?` in the app for every shortcut and command.
 node tests/run-tests.mjs       # engine tests: parser, commands, intersections, save/load
 node tests/browser-smoke.mjs   # drives the real page in headless Chromium
 node mcp/test.mjs              # MCP server, end to end, through the official MCP client
-bash scripts/deploy.sh         # all three tests, rsync to /var/www/geometry, restart geometry-mcp
+node mcp/widget-test.mjs       # the in-chat viewer in a sandboxed iframe, with a stand-in host
+bash scripts/deploy.sh         # all four tests, rsync to /var/www/geometry, restart geometry-mcp
 sudo systemctl status geometry-mcp     # the MCP server (Node, port 5040, runs from mcp/)
 sudo journalctl -u geometry-mcp -f
 ```

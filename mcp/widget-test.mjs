@@ -1,0 +1,130 @@
+// Browser test of the in-chat viewer. A stand-in host page loads the viewer
+// HTML (fetched over MCP, as Claude or ChatGPT would) in a sandboxed iframe,
+// answers the MCP Apps handshake, sends a real draw_geometry result, then the
+// test drags a point inside the iframe and presses "Open in app".
+//   node mcp/widget-test.mjs [--screenshot out.png]
+import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+
+const shotAt = process.argv.indexOf('--screenshot');
+const SHOT = shotAt > -1 ? process.argv[shotAt + 1] : null;
+let fail = 0;
+const check = (c, m) => { console.log(`${c ? 'OK  ' : 'FAIL'} ${m}`); if (!c) fail++; };
+
+// 1. get the viewer and a result from a real server
+const port = 5600 + Math.floor(Math.random() * 300);
+const server = spawn(process.execPath, [new URL('./server.mjs', import.meta.url).pathname], { env: { ...process.env, PORT: String(port) }, stdio: ['ignore', 'ignore', 'inherit'] });
+for (let i = 0; i < 80; i++) { try { if ((await fetch(`http://127.0.0.1:${port}/healthz`)).ok) break; } catch { /* starting */ } await delay(100); }
+const client = new Client({ name: 'widget-test', version: '1' });
+await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`)));
+const tool = (await client.listTools()).tools.find(t => t.name === 'draw_geometry');
+const uri = tool._meta && tool._meta.ui && tool._meta.ui.resourceUri;
+check(uri && tool._meta['ui/resourceUri'] === uri, `draw_geometry declares its viewer (${uri})`);
+const resList = (await client.listResources()).resources;
+check(resList.some(r => r.uri === uri && r.mimeType === 'text/html;profile=mcp-app'), 'viewer listed as an MCP Apps resource');
+const read = await client.readResource({ uri });
+const html = read.contents[0].text;
+check(read.contents[0].mimeType === 'text/html;profile=mcp-app' && html.length > 50000 && !/<script[^>]+src=/.test(html), `viewer is one self-contained page (${Math.round(html.length / 1024)} KB)`);
+const result = await client.callTool({ name: 'draw_geometry', arguments: {
+  title: 'Euler line', caption: 'Drag A, B or C.', image: false,
+  script: 'A = (-3, -2)\nB = (4, -2)\nC = (-0.5, 3.2)\na = Segment(B, C)\nb = Segment(C, A)\nc = Segment(A, B)\nω = Circumcircle(A, B, C)\nH = Orthocenter(A, B, C)\ne = EulerLine(A, B, C)\nSetColor(e, "red")',
+} });
+check(result.structuredContent && result.structuredContent.doc.o.length === 9, 'tool result carries the construction for the viewer');
+await client.close();
+server.kill();
+
+// 2. a minimal host page
+const hostPage = `<!doctype html><meta charset="utf-8"><body style="margin:0;background:#222">
+<iframe id="f" sandbox="allow-scripts" style="width:800px;height:620px;border:0;display:block"></iframe>
+<script>
+const f = document.getElementById('f');
+window.log = []; window.opened = null; window.size = null;
+const send = m => f.contentWindow.postMessage({ jsonrpc: '2.0', ...m }, '*');
+addEventListener('message', e => {
+  if (e.source !== f.contentWindow) return;
+  const m = e.data; log.push(m.method || 'response');
+  if (m.method === 'ui/initialize') send({ id: m.id, result: { protocolVersion: '2026-01-26', hostInfo: { name: 'test-host', version: '1' },
+    hostCapabilities: { openLinks: {} }, hostContext: { theme: 'light', displayMode: 'inline', availableDisplayModes: ['inline', 'fullscreen'] } } });
+  if (m.method === 'ui/notifications/initialized') {
+    send({ method: 'ui/notifications/tool-input', params: { arguments: {} } });
+    send({ method: 'ui/notifications/tool-result', params: RESULT });
+  }
+  if (m.method === 'ui/open-link') { window.opened = m.params.url; send({ id: m.id, result: {} }); }
+  if (m.method === 'ui/notifications/size-changed') window.size = m.params.height;
+});
+const RESULT = ${JSON.stringify(result)};
+f.srcdoc = ${JSON.stringify(html).replace(/<\//g, '<\\/')};
+</script>`;
+const web = createServer((req, res) => { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(hostPage); });
+await new Promise(r => web.listen(0, '127.0.0.1', r));
+
+// 3. drive it in Chromium
+const CDP = 9500 + Math.floor(Math.random() * 300);
+const profile = await mkdtemp(join(tmpdir(), 'gdw-'));
+const chrome = spawn('/usr/bin/chromium-browser', ['--headless=new', `--remote-debugging-port=${CDP}`, `--user-data-dir=${profile}`, '--no-first-run', 'about:blank'], { stdio: 'ignore' });
+let target;
+for (let i = 0; i < 80 && !target; i++) { try { target = (await (await fetch(`http://127.0.0.1:${CDP}/json/list`)).json()).find(t => t.type === 'page'); } catch { /* starting */ } if (!target) await delay(250); }
+const ws = new WebSocket(target.webSocketDebuggerUrl);
+await new Promise(r => ws.addEventListener('open', r));
+let id = 0;
+const pend = new Map(), contexts = [], errors = [];
+ws.addEventListener('message', ev => {
+  const m = JSON.parse(ev.data);
+  if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); return; }
+  if (m.method === 'Runtime.executionContextCreated') contexts.push(m.params.context);
+  if (m.method === 'Target.attachedToTarget') sessions.push(m.params);
+  if (m.method === 'Runtime.exceptionThrown') errors.push(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text);
+});
+const sessions = [];
+const send = (method, params = {}, sessionId) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method, params, ...(sessionId ? { sessionId } : {}) })); });
+const evalIn = async (expr, sessionId) => { const r = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true }, sessionId); return r.result?.result?.value; };
+try {
+  await send('Runtime.enable');
+  await send('Page.enable');
+  await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
+  await send('Emulation.setDeviceMetricsOverride', { width: 820, height: 640, deviceScaleFactor: 1, mobile: false });
+  await send('Page.navigate', { url: `http://127.0.0.1:${web.address().port}/` });
+  await delay(1500);
+  // The sandboxed iframe is an out-of-process frame: evaluate in its session.
+  const frameSession = sessions.filter(t => t.targetInfo.type === 'iframe').at(-1);
+  const frame = frameSession || contexts.find(c => c.origin === 'null');
+  const inFrame = e => evalIn(e, frameSession && frameSession.sessionId);
+  check(!!frame, 'viewer runs in a sandboxed (opaque-origin) iframe');
+  const log = await evalIn('window.log.join(",")');
+  check(/^ui\/initialize,ui\/notifications\/initialized/.test(log), `handshake in order: ${log}`);
+  check(await inFrame('gdw.cons.objs.length') === 9, 'viewer rebuilt the 9 objects');
+  check(await inFrame("document.querySelector('#title').textContent") === 'Euler line' && await inFrame("document.querySelector('#status').hidden"), 'title shown, no error status');
+  const ink = await inFrame(`(() => { const c = document.querySelector('#cv'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 16) if (d[i] < 200) n++; return n; })()`);
+  check(ink > 500, `canvas drew the figure (${ink} sampled dark px)`);
+  check((await evalIn('window.size')) > 300, 'viewer told the host its height');
+  // drag C upwards by 1 unit and check the orthocentre moved
+  const before = await inFrame("JSON.stringify(gdw.cons.get('H').val)");
+  const [cx, cy, top] = await inFrame("[gdw.view.sx(-0.5), gdw.view.sy(3.2), document.querySelector('#cv').getBoundingClientRect().top]");
+  const [tx, ty] = await inFrame("[gdw.view.sx(-0.5), gdw.view.sy(4.2)]");
+  const mouse = (type, x, y) => send('Input.dispatchMouseEvent', { type, x, y: y + top, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1 });
+  await mouse('mousePressed', cx, cy);
+  for (let i = 1; i <= 6; i++) await mouse('mouseMoved', cx + (tx - cx) * i / 6, cy + (ty - cy) * i / 6);
+  await mouse('mouseReleased', tx, ty);
+  await delay(100);
+  const c2 = await inFrame("gdw.cons.get('C').val");
+  check(Math.abs(c2.y - 4.2) < 0.05, `dragging C inside the chat moves it (y = ${c2.y.toFixed(3)})`);
+  check(await inFrame("JSON.stringify(gdw.cons.get('H').val)") !== before, 'dependent objects follow the drag');
+  await inFrame("document.querySelector('#open').click(); true");
+  await delay(200);
+  check(/geometry\/#c=z/.test(await evalIn('window.opened') || ''), '"Open in app" asks the host to open the share link');
+  if (SHOT) { const r = await send('Page.captureScreenshot', { format: 'png' }); await writeFile(SHOT, Buffer.from(r.result.data, 'base64')); console.log(`     screenshot → ${SHOT}`); }
+  check(errors.length === 0, `no errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+} catch (e) {
+  check(false, `crashed: ${e.stack || e.message}`);
+} finally {
+  ws.close(); chrome.kill('SIGKILL'); web.close();
+  await rm(profile, { recursive: true, force: true }).catch(() => {});
+}
+console.log(fail ? `${fail} failure(s)` : 'all viewer checks passed');
+process.exit(fail ? 1 : 0);

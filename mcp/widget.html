@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Geometry Drawer</title>
+<style>
+  :root { --bg: #ffffff; --fg: #1d1f23; --muted: #6b7280; --line: #dfe2e8; --panel: #f7f8fa; --accent: #2457d6; color-scheme: light; }
+  :root[data-theme="dark"] { --bg: #16181d; --fg: #e8e9ec; --muted: #9aa1ad; --line: #31363f; --panel: #1d2026; --accent: #78a0ff; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+  #top { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  #title { font-weight: 600; flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  button { font: inherit; font-size: 12.5px; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 4px 10px; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button[hidden], #caption[hidden], #status[hidden] { display: none; }
+  #caption { width: 100%; font-size: 13px; color: var(--muted); margin: 2px 0 0; }
+  #wrap { position: relative; }
+  #cv { display: block; touch-action: none; }
+  #status { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); color: var(--muted); font-size: 13px; }
+  #hint { position: absolute; left: 8px; bottom: 6px; font-size: 11.5px; color: var(--muted); pointer-events: none; background: color-mix(in srgb, var(--bg) 80%, transparent); padding: 1px 6px; border-radius: 5px; }
+</style>
+</head>
+<body>
+<div id="top">
+  <div id="title">Geometry</div>
+  <button id="fit" title="Fit the figure">Fit</button>
+  <button id="reset" title="Undo your drags">Reset</button>
+  <button id="full" title="Fullscreen" hidden>⤢</button>
+  <button id="open" class="primary" title="Open in the full Geometry Drawer app" hidden>Open in app ↗</button>
+  <p id="caption" hidden></p>
+</div>
+<div id="wrap">
+  <canvas id="cv" aria-label="Interactive geometry figure"></canvas>
+  <div id="status"></div>
+  <div id="hint">Drag points · scroll or pinch to zoom · drag the background to pan</div>
+</div>
+<script>/*BUNDLE*/</script>
+</body>
+</html>

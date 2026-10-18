@@ -66,6 +66,16 @@ calls `recompute(from)`.
    app's `#c=z…` format, plus `i` for the title card). `mcp/server.mjs` is
    stateless Streamable HTTP: one fresh McpServer per POST, using
    `@modelcontextprotocol/sdk`.
+   The in-chat viewer is `js/widget.js` plus `mcp/widget.html`. At startup the
+   server bundles them with esbuild into one inline page, served as the MCP
+   Apps resource `ui://geometry-drawer/viewer.html` (mime
+   `text/html;profile=mcp-app`). `draw_geometry` points to it through
+   `_meta.ui.resourceUri`, plus the legacy `ui/resourceUri` key, and returns
+   `structuredContent` = {title, caption, link, doc}. The viewer speaks MCP
+   Apps JSON-RPC over postMessage (`ui/initialize`, then
+   `ui/notifications/tool-result`, `ui/open-link`, `size-changed`,
+   `request-display-mode`). It falls back to `window.openai` (ChatGPT's older
+   Apps SDK bridge).
 
 ## Invariants
 
@@ -101,6 +111,11 @@ calls `recompute(from)`.
 
 ## Gotchas
 
+- The viewer must stay self-contained, with no network and no external
+  files. Its CSP declares no domains, and hosts block anything not
+  declared. Send nothing to the host before the `ui/initialize` reply.
+- Chromium runs a sandboxed srcdoc iframe out of process, so
+  `widget-test.mjs` attaches to it as its own CDP target (`flatten`).
 - `mcp/` imports `../js/*.js` from this checkout. After any engine change,
   restart `geometry-mcp`; `scripts/deploy.sh` does that.
 

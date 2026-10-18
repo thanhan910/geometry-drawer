@@ -23,6 +23,7 @@ if [ "${SKIP_TESTS:-0}" != "1" ]; then
   echo "==> MCP server test"
   (cd "$REPO/mcp" && [ -d node_modules ] || npm ci --omit=dev --silent)
   node "$REPO/mcp/test.mjs"
+  node "$REPO/mcp/widget-test.mjs"
 fi
 
 echo "==> copying to $DEST"

@@ -5,6 +5,8 @@
 //   PORT=5040 node server.mjs      →  POST /mcp, GET /healthz, GET / (help page)
 
 import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
+import { buildSync } from 'esbuild';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
@@ -15,12 +17,31 @@ const PORT = +(process.env.PORT || 5040);
 const HOST = process.env.HOST || '127.0.0.1';
 const MAX_BODY = 256 * 1024;
 
+// The in-chat viewer (MCP Apps): js/widget.js and the engine bundled into one
+// self-contained HTML page at startup, so it always matches the engine.
+const VIEWER_URI = 'ui://geometry-drawer/viewer.html';
+const VIEWER_MIME = 'text/html;profile=mcp-app';
+const VIEWER_HTML = (() => {
+  const js = buildSync({ entryPoints: [new URL('../js/widget.js', import.meta.url).pathname], bundle: true, write: false, format: 'iife', minify: true, target: 'es2020' })
+    .outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
+  return readFileSync(new URL('./widget.html', import.meta.url), 'utf8').replace('/*BUNDLE*/', () => js);
+})();
+// No network, no external files: everything the viewer needs is inline.
+const VIEWER_META = { ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } } };
+
 const INSTRUCTIONS = `Geometry Drawer draws dynamic geometry (constructions, triangle centres, circles, conics, function graphs, transformations) from a short script.
 Workflow: call geometry_language once to learn the syntax, write a script, call draw_geometry, look at the returned image, fix any reported errors or wrong-looking parts, and then give the user the link, which opens the figure in an interactive app where they can drag points.
 Use draw_geometry's verify list (e.g. "AreConcyclic(A, B, C, D)") to test a conjecture: each check is re-tested on random positions, so "always" suggests a theorem and "only sometimes" a coincidence.`;
 
 function buildServer() {
   const server = new McpServer({ name: 'geometry-drawer', title: 'Geometry Drawer', version: '1.0.0' }, { instructions: INSTRUCTIONS });
+
+  server.registerResource('geometry-viewer', VIEWER_URI, {
+    title: 'Geometry Drawer viewer',
+    description: 'Interactive, draggable view of a figure drawn by draw_geometry.',
+    mimeType: VIEWER_MIME,
+    _meta: VIEWER_META,
+  }, async () => ({ contents: [{ uri: VIEWER_URI, mimeType: VIEWER_MIME, text: VIEWER_HTML, _meta: VIEWER_META }] }));
 
   server.registerTool('geometry_language', {
     title: 'Geometry Drawer language reference',
@@ -32,7 +53,7 @@ function buildServer() {
   server.registerTool('draw_geometry', {
     title: 'Draw a geometry construction',
     description: 'Build a figure from a script in the Geometry Drawer language (one statement per line, e.g. "A = (0, 0)", "k = Circumcircle(A, B, C)", "SetColor(k, \\"red\\")"). '
-      + 'Returns an image of the figure, a link that opens it in the interactive app (always give the user this link), every object\'s value, errors by line number, '
+      + 'In chats that support MCP Apps the user sees the figure as an interactive widget they can drag; otherwise share the link. Returns an image of the figure, a link that opens it in the interactive app (always give the user this link), every object\'s value, errors by line number, '
       + 'and true/false checks re-tested on random positions of the free points. Call geometry_language first if you do not know the syntax.',
     inputSchema: {
       script: z.string().max(LIMITS.scriptChars).describe('The construction, one statement per line. # starts a comment.'),
@@ -44,12 +65,16 @@ function buildServer() {
       image: z.boolean().optional().describe('Return a PNG preview (default true).'),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
+    // MCP Apps: hosts that support it show the figure as a live, draggable
+    // widget in the chat (both key forms, as the spec asks for compatibility).
+    _meta: { ui: { resourceUri: VIEWER_URI }, 'ui/resourceUri': VIEWER_URI,
+      'openai/toolInvocation/invoking': 'Drawing the figure…', 'openai/toolInvocation/invoked': 'Figure ready' },
   }, async ({ script, title, caption, verify, show_axes, show_grid, image }) => {
     try {
       const r = draw({ script, title, caption, verify: verify || [], showAxes: show_axes, showGrid: show_grid, image: image !== false });
       const content = [{ type: 'text', text: r.text }];
       if (r.png) content.push({ type: 'image', data: r.png.toString('base64'), mimeType: 'image/png' });
-      return { content, isError: r.objects === 0 && r.errors.length > 0 };
+      return { content, structuredContent: r.structured, isError: r.objects === 0 && r.errors.length > 0 };
     } catch (e) {
       return { content: [{ type: 'text', text: `Could not draw: ${e.message}` }], isError: true };
     }

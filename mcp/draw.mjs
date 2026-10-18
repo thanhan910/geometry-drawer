@@ -117,5 +117,7 @@ export function draw({ script, title, caption, showAxes, showGrid, verify = [], 
     const svg = renderSVG(Renderer, cons, { view, theme: THEMES.light, settings: { ...settings, digits: 2 }, width, height });
     png = new Resvg(svg, { font: { fontFiles: FONTS, loadSystemFonts: false, defaultFontFamily: 'DejaVu Sans' }, background: '#ffffff' }).render().asPng();
   }
-  return { link, text: lines.join('\n'), png, errors: res.errors, checks, objects: cons.objs.length };
+  // What the in-chat viewer (js/widget.js) needs to rebuild the figure.
+  const structured = { title: title || '', caption: caption || '', link, doc: { v: view, vw: width, vh: height, s: settings, o: cons.toJSON() } };
+  return { link, text: lines.join('\n'), png, errors: res.errors, checks, objects: cons.objs.length, structured };
 }
