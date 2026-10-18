@@ -45,10 +45,17 @@ const canvas = $('#cv');
 const R = new Renderer(canvas);
 const view = R.view;
 
+// Saved settings. Version 2 made grid and axes off by default; settings saved
+// before that held the old defaults, not a choice, so those two are dropped.
+function storedSettings() {
+  const s = store.get('gd:settings') || {};
+  if (!(s.sv >= 2)) { delete s.grid; delete s.axes; }
+  return s;
+}
 const S = {
   tool: 'move', tsel: [], selection: new Set(), hover: null, preview: null, rubber: null,
-  settings: Object.assign({ grid: true, axes: true, snap: true, digits: 2, theme: 'auto', labeling: 'auto', showAux: false, algebra: !EMBED },
-    store.get('gd:settings') || {}),
+  settings: Object.assign({ grid: false, axes: false, snap: true, digits: 2, theme: 'auto', labeling: 'auto', showAux: false, algebra: !EMBED, sv: 2 },
+    storedSettings()),
   history: [], hidx: -1, groupTool: {}, fnColor: 0, inputHist: [], inputIdx: -1,
 };
 R.settings = S.settings;

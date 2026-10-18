@@ -96,7 +96,9 @@ try {
   for (let i = 0; i < 80; i++) { try { if (await ev('!!window.gd')) break; } catch { /* loading */ } await delay(100); }
   if (!(await ev('!!window.gd'))) console.log('     page:', await ev('location.href + " | " + document.title'), errors);
   check(await ev('!!window.gd'), 'app loaded');
-  await ev("localStorage.clear(); gd.cons.load([]); gd.S.selection.clear(); gd.render(); true");
+  // Grid and axes are off by default; the drawing checks below rely on grid snapping.
+  check(await ev("!gd.S.settings.grid && !gd.S.settings.axes"), "grid and axes are off by default");
+  await ev("localStorage.clear(); gd.S.settings.grid = true; gd.cons.load([]); gd.S.selection.clear(); gd.render(); true");
 
   const rect = await ev("JSON.stringify(document.querySelector('#cv').getBoundingClientRect())").then(JSON.parse);
   // world → page coordinates

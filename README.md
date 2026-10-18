@@ -85,7 +85,8 @@ plan: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   time. *New from template* starts a triangle, a triangle with its
   circumcircle or incircle, a cyclic quadrilateral, or two circles, and turns
   on the clean diagram (no axes or grid).
-- Light and dark themes, touch and pinch-zoom, and a phone layout.
+- Light and dark themes, touch and pinch-zoom, and a phone layout. Grid and
+  axes start off (turn them on in the main menu); points snap to the grid only while it is shown.
 
 ### Scripts
 

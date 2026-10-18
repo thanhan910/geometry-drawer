@@ -47,7 +47,7 @@ export class View {
 export const THEMES = {
   light: { bg: '#ffffff', grid: '#eef0f4', gridMajor: '#dde1e8', axis: '#4b5260', free: '#2457d6', onpath: '#5d8ff0',
     dep: '#3a3a3a', line: '#2b2b2b', poly: '#a0522d', angle: '#0e8a4f', text: '#1d1d1f', fn: '#2457d6', preview: '#7d8597', halo: '#ffb000' },
-  dark: { bg: '#16181d', grid: '#20242c', gridMajor: '#2c313b', axis: '#9aa3b2', free: '#78a0ff', onpath: '#a6c1ff',
+  dark: { bg: '#121212', grid: '#1d1d1d', gridMajor: '#2a2a2a', axis: '#9e9e9e', free: '#78a0ff', onpath: '#a6c1ff',
     dep: '#d3d3d3', line: '#dedede', poly: '#e3955f', angle: '#43d18f', text: '#ececee', fn: '#78a0ff', preview: '#8d95a5', halo: '#ffc23d' },
 };
 
@@ -112,7 +112,7 @@ export class Renderer {
     this.ctx = canvas.getContext('2d');
     this.view = new View();
     this.theme = THEMES.light;
-    this.settings = { grid: true, axes: true, digits: 2 };
+    this.settings = { grid: false, axes: false, digits: 2 };
   }
 
   resize(w, h, dpr) {
@@ -402,11 +402,10 @@ export class Renderer {
     g.pt = [sx, sy];
     if (sx < -50 || sy < -50 || sx > v.W + 50 || sy > v.H + 50) return;
     if (hl) { c.fillStyle = hexA(st.color, hl); c.beginPath(); c.arc(sx, sy, st.size + 5, 0, 2 * PI); c.fill(); }
+    // Flat: a solid disc with a thin ring in the background colour, which
+    // keeps it readable where it sits on a line.
     c.fillStyle = st.color; c.beginPath(); c.arc(sx, sy, st.size, 0, 2 * PI); c.fill();
-    c.strokeStyle = 'rgba(0,0,0,0.35)'; c.lineWidth = 1; c.stroke();
-    if (st.role === 'free' || st.role === 'onpath') {
-      c.fillStyle = 'rgba(255,255,255,0.35)'; c.beginPath(); c.arc(sx - st.size * 0.3, sy - st.size * 0.3, st.size * 0.35, 0, 2 * PI); c.fill();
-    }
+    c.strokeStyle = this.theme.bg; c.lineWidth = 1.25; c.stroke();
   }
 
   drawConic(val, st, g, hl) {

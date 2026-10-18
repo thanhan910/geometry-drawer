@@ -13,12 +13,12 @@
   color-scheme: light;
 }
 :root[data-theme="dark"] {
-  --bg: #16181d;
-  --panel: #1d2026;
-  --panel2: #262a32;
-  --line: #31363f;
-  --fg: #e8e9ec;
-  --muted: #9aa1ad;
+  --bg: #121212;
+  --panel: #1a1a1a;
+  --panel2: #242424;
+  --line: #333333;
+  --fg: #e8e8e8;
+  --muted: #a0a0a0;
   --accent: #78a0ff;
   --accent-soft: #263457;
   --danger: #ff6b5b;
