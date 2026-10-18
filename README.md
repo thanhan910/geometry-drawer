@@ -102,7 +102,13 @@ Inspired by [GeoGebra](https://www.geogebra.org); see
   time. *New from template* starts a triangle, a triangle with its
   circumcircle or incircle, a cyclic quadrilateral, or two circles, and turns
   on the clean diagram (no axes or grid).
-- Light and dark themes, touch and pinch-zoom, and a phone layout. Grid and
+- **Finding things:** click a toolbar group (a ▾ marks groups with more) to
+  see all its tools, each with a one-line description. **Search** (the box at
+  the top right, or `Ctrl K`) finds tools, menu actions, theorem demos,
+  templates and every command, including by everyday words ("eraser" finds
+  Delete). With nothing typed it shows a short getting-started guide.
+- Light and dark themes, touch and pinch-zoom, and a phone layout. Narrow
+  windows, such as a chat's side panel, get a compact layout. Grid and
   axes start off (turn them on in the main menu); points snap to the grid only while it is shown.
 
 ### Scripts

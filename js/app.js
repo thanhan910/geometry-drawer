@@ -13,6 +13,7 @@ import { languageGuide } from './guide.js';
 import { renderSVG } from './svgctx.js';
 import { connectHost } from './hostbridge.js';
 import { exportDiagram } from './export.js';
+import { createPalette } from './palette.js';
 
 const $ = s => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
@@ -791,6 +792,9 @@ function startAnim() { if (!animRaf) { animLast = 0; animRaf = requestAnimationF
 // ---------- toolbar ----------
 
 let flyGroup = null;
+// A group button picks its current tool and, if the group has more, opens the
+// list of all of them on the same click (a second click closes it). Right-click
+// and long-press open the list too.
 function renderToolbar() {
   const nav = $('#tools');
   nav.textContent = '';
@@ -798,19 +802,40 @@ function renderToolbar() {
     const tools = TOOLS.filter(t => t.group === g);
     const cur = TOOL[S.groupTool[g]] || tools[0];
     const active = TOOL[S.tool].group === g;
+    const more = tools.length > 1;
     const b = el('button', {
-      class: 'tb' + (active ? ' on' : ''), title: `${cur.name}${cur.key ? ` (${cur.key.toUpperCase()})` : ''} - ${label}`,
-      'aria-label': cur.name, 'aria-pressed': active ? 'true' : 'false',
-      onclick: () => { if (active && tools.length > 1) toggleFlyout(g, b); else { setTool(cur.id); if (tools.length > 1 && cur.id === tools[0].id && !S.groupTool[g + ':seen']) {} } },
-      html: cur.svg + (tools.length > 1 ? '<span class="more"></span>' : ''),
+      class: 'tb' + (active ? ' on' : '') + (more ? ' grp' : ''), 'data-g': g,
+      title: `${label}: ${cur.name}${cur.key ? ` (${cur.key.toUpperCase()})` : ''}${more ? ` - click to see all ${tools.length} tools` : ''}`,
+      'aria-label': `${cur.name}${more ? `, ${label}: ${tools.length} tools` : ''}`, 'aria-pressed': active ? 'true' : 'false',
+      'aria-haspopup': more ? 'menu' : null,
+      onclick: () => {
+        if (more && flyGroup === g && !$('#flyout').hidden) { closeFlyout(); return; }
+        if (S.tool !== cur.id) setTool(cur.id);
+        if (more) toggleFlyout(g, $(`#tools .tb[data-g="${g}"]`));
+      },
+      html: cur.svg + (more ? '<span class="more" aria-hidden="true"></span>' : ''),
     });
     b.addEventListener('contextmenu', ev => { ev.preventDefault(); toggleFlyout(g, b); });
     let press = 0;
-    b.addEventListener('pointerdown', () => { press = setTimeout(() => { press = -1; toggleFlyout(g, b); }, 450); });
+    b.addEventListener('pointerdown', ev => { if (ev.pointerType === 'mouse') return; press = setTimeout(() => { press = -1; toggleFlyout(g, b); }, 450); });
     b.addEventListener('pointerup', ev => { if (press === -1) ev.stopPropagation(); clearTimeout(press); });
     nav.append(b);
   }
+  toolsOverflow();
 }
+// A fade at the toolbar's edge when some groups are scrolled out of view
+// (narrow windows, chat side panels); the mouse wheel scrolls it sideways.
+function toolsOverflow() {
+  const n = $('#tools');
+  n.classList.toggle('fade-r', n.scrollLeft + n.clientWidth < n.scrollWidth - 2);
+  n.classList.toggle('fade-l', n.scrollLeft > 2);
+}
+$('#tools').addEventListener('scroll', toolsOverflow, { passive: true });
+$('#tools').addEventListener('wheel', ev => {
+  const n = $('#tools');
+  if (n.scrollWidth <= n.clientWidth || Math.abs(ev.deltaX) > Math.abs(ev.deltaY)) return;
+  ev.preventDefault(); n.scrollLeft += ev.deltaY;
+}, { passive: false });
 function toggleFlyout(g, anchor) {
   const f = $('#flyout');
   if (flyGroup === g && !f.hidden) return closeFlyout();
@@ -819,15 +844,16 @@ function toggleFlyout(g, anchor) {
   const label = GROUPS.find(x => x[0] === g)[1];
   f.append(el('div', { class: 'flyhead' }, label));
   for (const t of TOOLS.filter(t => t.group === g)) {
-    f.append(el('button', { class: 'flyitem' + (S.tool === t.id ? ' on' : ''), onclick: () => { closeFlyout(); setTool(t.id); }, html: t.svg },
-      el('span', {}, t.name), t.key ? el('kbd', {}, t.key.toUpperCase()) : null));
+    f.append(el('button', { class: 'flyitem' + (S.tool === t.id ? ' on' : ''), title: t.help, onclick: () => { closeFlyout(); setTool(t.id); }, html: t.svg },
+      el('span', { class: 'fi' }, el('b', {}, t.name), el('small', {}, t.help)), t.key ? el('kbd', {}, t.key.toUpperCase()) : null));
   }
   f.hidden = false;
-  const r = anchor.getBoundingClientRect();
+  document.querySelectorAll('#tools .tb').forEach(x => x.setAttribute('aria-expanded', String(x === anchor)));
+  const r = (anchor || $('#tools')).getBoundingClientRect();
   f.style.left = Math.max(8, Math.min(innerWidth - f.offsetWidth - 8, r.left)) + 'px';
   f.style.top = r.bottom + 4 + 'px';
 }
-function closeFlyout() { $('#flyout').hidden = true; flyGroup = null; }
+function closeFlyout() { $('#flyout').hidden = true; flyGroup = null; document.querySelectorAll('#tools .tb[aria-expanded]').forEach(x => x.setAttribute('aria-expanded', 'false')); }
 
 // ---------- algebra view ----------
 
@@ -864,7 +890,7 @@ function refreshAlgebra() {
   const shown = cons.objs.filter(o => S.settings.showAux || !o.style.aux);
   if (!shown.length) {
     list.append(el('div', { class: 'empty' },
-      el('p', {}, 'Pick a tool above, or type below:'),
+      el('p', {}, 'Pick a tool above (click a group to see all its tools), search everything with Ctrl+K, or type below:'),
       ...['A = (1, 2)', 'Circle(A, 3)', 'f(x) = x^2 - 2', 'y = 2x + 1', 'x^2/9 + y^2/4 = 1', 'a = 2'].map(s =>
         el('button', { class: 'ex', onclick: () => { $('#input').value = s; $('#input').focus(); } }, s))));
     return;
@@ -1755,6 +1781,7 @@ function loadDemo(i) {
   showInfo(d);
 }
 function showInfo(d) {
+  const tip = $('#tip'); if (tip) tip.remove();   // not on top of the card; it comes back next visit
   const box = $('#info');
   box.textContent = '';
   const acts = el('div', { class: 'acts' });
@@ -1826,9 +1853,104 @@ function showAlgebra(on) {
   requestAnimationFrame(resize);
 }
 
+// ---------- search ----------
+
+// Extra words people search with, by tool id.
+const TOOL_WORDS = {
+  move: 'select drag pan hand pointer arrow', point: 'dot new point', intersect: 'intersection crossing meet',
+  midpoint: 'middle centre center', segment: 'side edge', segfixed: 'length fixed', line: 'straight through two points',
+  perpendicular: 'orthogonal normal right angle 90', parallel: 'parallel line', perpbisector: 'bisect midperpendicular',
+  anglebisector: 'bisect', tangent: 'touch tangent line', locus: 'trace path',
+  center: 'incenter incentre circumcenter circumcentre centroid orthocenter orthocentre kimberling etc x1 x2 x3 x4 triangle centre',
+  foot: 'projection altitude', excircle: 'escribed excentre excenter', ninepoint: 'nine point feuerbach', eulerline: 'euler',
+  radical: 'power radical', commontangent: 'tangent circles', isogonal: 'conjugate', spiral: 'similarity miquel',
+  harmonic: 'cross ratio', anglechase: 'angle chasing equal angles', relation: 'collinear concyclic concurrent tangent prove conjecture check verify',
+  polygon: 'triangle quadrilateral shape', regpolygon: 'square hexagon pentagon equilateral regular',
+  circle: 'round compass circle', compass: 'radius copy compass', incircle: 'inscribed', circumcircle: 'circumscribed',
+  arc: 'arc', sector: 'pie', angle: 'measure degrees protractor', anglesize: 'rotate angle given', distance: 'length measure ruler',
+  area: 'measure', reflectline: 'mirror symmetry', reflectpoint: 'point symmetry half turn', inversion: 'invert inversion circle',
+  rotate: 'turn rotation', translate: 'shift move translation', dilate: 'scale enlarge homothety dilation',
+  slider: 'parameter animate variable number', text: 'label caption note write', showlabel: 'name label', showhide: 'hide visibility invisible',
+  delete: 'eraser erase remove rubber bin trash', zoomin: 'magnify', zoomout: 'shrink', derivative: 'differentiate', integral: 'area under',
+};
+function paletteEntries() {
+  const groupName = Object.fromEntries(GROUPS);
+  const out = [];
+  const action = (name, run, hint, words = '', kbd) => out.push({ kind: 'Action', name, run, hint, words, kbd });
+  for (const t of TOOLS) out.push({ kind: 'Tool', name: t.name, hint: `${groupName[t.group]} · ${t.help}`, words: TOOL_WORDS[t.id] || '', kbd: t.key && t.key.toUpperCase(), run: () => setTool(t.id) });
+  action('New construction', newDoc, 'Start again (Undo brings it back)', 'clear reset empty blank start');
+  if (EMBED) {
+    action('Open in the Geometry Drawer website', openInApp, 'With your edits, in a new tab', 'website full app tab');
+    if (host && host.caps.message) action('Ask AI about this figure', askAI, 'Your current figure is sent along', 'question chat help');
+    if (host && host.caps.fullscreen) action('Fullscreen', () => host.toggleFullscreen(), 'Make the editor bigger', 'expand maximise maximize');
+  } else {
+    action('Open file…', () => $('#file').click(), 'A saved .json construction', 'load import', 'Ctrl+O');
+    action('Save file', saveFile, 'Download the construction as .json', 'download keep', 'Ctrl+S');
+    action('Export PNG', exportPng, 'Download a picture', 'image picture png download');
+    action('Export SVG', exportSvg, 'Download a vector picture', 'image vector svg download');
+    action('Copy share link', shareLink, 'A link that opens this figure', 'url link share send');
+  }
+  action('Export Asymptote / TikZ…', () => showExport('asy'), 'Code for a LaTeX write-up', 'latex asy tikz code olympiad write up');
+  action('Undo', undo, 'Take back the last change', 'back revert', 'Ctrl+Z');
+  action('Redo', redo, 'Put the change back', 'forward', 'Ctrl+Y');
+  action('Step through construction', enterSteps, 'Replay the figure one object at a time', 'replay animation steps protocol');
+  action('Fit all objects', fitAll, 'Zoom to show everything', 'zoom view', 'F');
+  action('Standard view', standardView, 'Reset the zoom', 'zoom reset view', '0');
+  action(S.settings.algebra ? 'Hide algebra view' : 'Show algebra view', () => showAlgebra(!S.settings.algebra), 'The list of objects beside the canvas', 'list panel sidebar objects');
+  action('Write a script', () => { showAlgebra(true); showTab('script'); }, 'Commands or JavaScript that build the figure', 'code program javascript commands script');
+  action('Copy AI prompt', () => $('#scriptAI').click(), 'Teaches any AI chat this drawing language', 'chatgpt claude ai prompt');
+  action(S.settings.grid ? 'Hide grid' : 'Show grid', () => { S.settings.grid = !S.settings.grid; saveSettings(); render(); }, 'Points snap to it while shown', 'grid snap');
+  action(S.settings.axes ? 'Hide axes' : 'Show axes', () => { S.settings.axes = !S.settings.axes; saveSettings(); render(); }, 'x and y axes', 'axes axis coordinates');
+  action(S.settings.showAux ? 'Hide auxiliary objects' : 'Show auxiliary objects', () => { S.settings.showAux = !S.settings.showAux; saveSettings(); refreshAlgebra(); render(); }, 'Helper objects in the list', 'auxiliary hidden helper');
+  for (const [v, l] of [['light', 'Light theme'], ['dark', 'Dark theme'], ['auto', 'Theme like the system']]) action(l, () => { S.settings.theme = v; saveSettings(); applyTheme(); }, 'Colours of the app', 'theme dark light mode colours colors');
+  action('Change colour, style or label', () => { setTool('move'); toast('Click an object to select it: its properties panel has colour, style, size and label'); }, 'Select an object to open its properties', 'colour color style thickness dashed size label properties format');
+  action('More settings', openMenu, 'Rounding, labels for new objects, snapping', 'settings preferences rounding decimals labels menu options');
+  action('Shortcuts and commands', showHelp, 'Every keyboard shortcut and command', 'help keys keyboard shortcuts guide manual', '?');
+  DEMOS.forEach((d, i) => out.push({ kind: 'Demo', name: d.title, hint: 'Theorem demo, with a Check button', words: 'theorem demo example', run: () => loadDemo(i) }));
+  for (const k of Object.keys(TEMPLATES)) out.push({ kind: 'Template', name: k, hint: 'Start from this figure', words: 'template start new', run: () => applyTemplate(k) });
+  const commands = [...Object.entries(HELP).filter(([l]) => CANON[l] && CANON[l].toLowerCase() === l).map(([l, sig]) => [CANON[l], sig]),
+    ...Object.values(STATEMENTS).map(([sig]) => [sig.slice(0, sig.indexOf('(')), sig])];
+  for (const [name, sig] of commands) out.push({ kind: 'Command', name, hint: sig, words: 'command type input', run: () => insertCommand(name, sig) });
+  return out;
+}
+// Put a command into the input bar, ready to fill in.
+function insertCommand(name, sig) {
+  showAlgebra(true); showTab('alg');
+  input.value = `${name}(`;
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+  input.dispatchEvent(new Event('input'));
+  toast(`Usage: ${sig}`);
+}
+const palette = createPalette({
+  entries: paletteEntries,
+  guide: [
+    'Click a toolbar group to see all its tools; a ▾ marks groups with more.',
+    'With a tool chosen, click the canvas or existing objects. The hint at the bottom says what to click next.',
+    'Type in the input bar: A = (1, 2), Circle(A, 3), f(x) = x^2.',
+    'Select an object to change its colour, style and label. Ctrl+Z undoes.',
+    'Press ? for every shortcut and command.',
+  ],
+});
+function openSearch(q) { closeMenu(); closeFlyout(); hideTip(); palette.open(q); }
+$('#btnSearch').addEventListener('click', () => openSearch());
+
+// A one-time welcome tip on the website (not inside chats, where space is short).
+function showTip() {
+  if (EMBED || store.get('gd:tip')) return;
+  const tip = el('div', { id: 'tip', role: 'note' },
+    el('span', {}, el('b', {}, 'New here? '), 'Click a toolbar group to see its tools, or search everything with ', el('kbd', {}, 'Ctrl K'), '. Press ', el('kbd', {}, '?'), ' for all shortcuts.'),
+    el('button', { class: 'btn small primary', onclick: () => openSearch() }, 'Search'),
+    el('button', { class: 'ib small', 'aria-label': 'Dismiss', title: 'Dismiss', onclick: hideTip, html: '✕' }));
+  $('#stage').append(tip);
+}
+function hideTip() { const t = $('#tip'); if (t) t.remove(); store.set('gd:tip', 1); }
+
 // ---------- keyboard ----------
 
 document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && !e.shiftKey && !e.altKey) { e.preventDefault(); palette.isOpen ? palette.close() : openSearch(); return; }
+  if (palette.isOpen) return;
   const tag = (e.target.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || tag === 'select' || $('#dlg').open) return;
   const ctrl = e.ctrlKey || e.metaKey;
@@ -1894,13 +2016,17 @@ $('#btnAlgebra').addEventListener('click', () => showAlgebra(!S.settings.algebra
 $('#zin').addEventListener('click', () => { view.zoomAt(view.W / 2, view.H / 2, 1.4); viewChanged(); });
 $('#zout').addEventListener('click', () => { view.zoomAt(view.W / 2, view.H / 2, 1 / 1.4); viewChanged(); });
 $('#zfit').addEventListener('click', fitAll);
+// Clicks outside close the menu and the tool list. composedPath(), not
+// closest(): a tool click re-renders the toolbar, detaching its button.
 document.addEventListener('click', ev => {
-  if (!ev.target.closest('#menu') && !ev.target.closest('#btnMenu')) closeMenu();
-  if (!ev.target.closest('#flyout') && !ev.target.closest('#tools')) closeFlyout();
+  const inside = id => ev.composedPath().some(n => n.id === id);
+  if (!inside('menu') && !inside('btnMenu')) closeMenu();
+  if (!inside('flyout') && !inside('tools')) closeFlyout();
 });
 $('#help').addEventListener('click', ev => { if (ev.target.id === 'help') ev.target.hidden = true; });
 
 function resize() {
+  toolsOverflow();
   const st = $('#stage').getBoundingClientRect();
   R.resize(Math.max(50, st.width), Math.max(50, st.height), window.devicePixelRatio || 1);
   viewChanged();
@@ -1938,13 +2064,17 @@ function embedContext(ctx) {
     requestAnimationFrame(resize);
   }
 }
+// The chat actions float over the canvas's top-right corner, so the toolbar
+// keeps its room in a narrow chat panel.
 function addEmbedButtons() {
   if (!host || $('#embedOpen')) return;
-  const right = $('#bar .right');
+  const bar = el('div', { id: 'embedBar' });
   const b = (id, label, title, fn, cls = 'btn small') => el('button', { id, class: cls, title, onclick: fn }, label);
-  if (host.caps.message) right.prepend(b('embedAsk', 'Ask AI', 'Ask the AI about your figure', askAI));
-  if (host.caps.fullscreen) right.prepend(b('embedFull', '⤢', 'Fullscreen', () => host.toggleFullscreen()));
-  right.prepend(b('embedOpen', 'Open in app ↗', 'Open in the full Geometry Drawer website, with your edits', openInApp, 'btn small primary'));
+  bar.append(b('embedOpen', 'Open in app ↗', 'Open in the full Geometry Drawer website, with your edits', openInApp, 'btn small primary'));
+  if (host.caps.message) bar.append(b('embedAsk', 'Ask AI', 'Ask the AI about your figure', askAI));
+  if (host.caps.fullscreen) bar.append(b('embedFull', '⤢', 'Fullscreen', () => host.toggleFullscreen()));
+  $('#stage').append(bar);
+  toolsOverflow();
 }
 async function openInApp() {
   const base = (S.embed && S.embed.link ? S.embed.link.split('#')[0] : '') || (EMBED && EMBED.appUrl) || location.href.split('#')[0];
@@ -1999,6 +2129,7 @@ async function start() {
   if (cons.objs.some(o => o.style.anim)) startAnim();
   if (S.pendingInfo) showInfo({ title: S.pendingInfo.title || 'Shared construction', caption: S.pendingInfo.caption });
   if (EMBED) embedStart();
+  else if (!S.pendingInfo) showTip();
 }
 start();
 

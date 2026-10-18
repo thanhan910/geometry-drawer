@@ -58,7 +58,10 @@ The modules load in dependency order:
    converted back to world coordinates.
 5. `js/tools.js` holds the tool table. Each tool has selection patterns and a
    `make()` that returns definitions as source strings. `js/app.js` holds the
-   tool engine and all of the UI.
+   tool engine and all of the UI. `js/palette.js` is the search box (Ctrl+K)
+   UI; its entries (tools with extra search words in `TOOL_WORDS`, menu
+   actions, demos, templates, commands) are built in `paletteEntries()` in
+   `app.js`. Add a new menu action there too, or search will not find it.
 
 **Every object is an AST.** Tools generate the same text a user could type,
 so the input bar, save files, undo and share links all share one format.
@@ -157,6 +160,12 @@ calls `recompute(from)`.
   policy there) and refuses to start if that tag is missing.
 - The page's CSP means no inline scripts, no `eval` and no workers on the
   page itself. Load code as files under `js/`.
+- A toolbar click re-renders the toolbar, detaching the clicked button before
+  the click reaches `document`. Outside-click handlers must use
+  `ev.composedPath()`, not `ev.target.closest()`.
+- The chat actions (Open in app, Ask AI, fullscreen) float over the canvas
+  (`#embedBar`), not in the toolbar, so a narrow chat panel keeps room for the
+  tools.
 - `docs/ARCHITECTURE.md` is the repository copy of the Claude Docs doc
   "Geometry Drawer: Architecture and Production Plan" (the operator's
   working copy). Its diagrams are PNG renders of the doc's drawings in

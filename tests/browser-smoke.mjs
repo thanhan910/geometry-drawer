@@ -96,6 +96,9 @@ try {
   for (let i = 0; i < 80; i++) { try { if (await ev('!!window.gd')) break; } catch { /* loading */ } await delay(100); }
   if (!(await ev('!!window.gd'))) console.log('     page:', await ev('location.href + " | " + document.title'), errors);
   check(await ev('!!window.gd'), 'app loaded');
+  check(await ev("!!document.querySelector('#tip') && /Ctrl K/.test(document.querySelector('#tip').textContent)"), 'first visit shows the welcome tip');
+  await ev("document.querySelector('#tip [aria-label=Dismiss]').click(); true");
+  check(await ev("!document.querySelector('#tip') && localStorage.getItem('gd:tip') === '1'"), 'the tip can be dismissed and is remembered');
   // Grid and axes are off by default; the drawing checks below rely on grid snapping.
   check(await ev("!gd.S.settings.grid && !gd.S.settings.axes"), "grid and axes are off by default");
   await ev("localStorage.clear(); gd.S.settings.grid = true; gd.cons.load([]); gd.S.selection.clear(); gd.render(); true");
@@ -317,6 +320,33 @@ try {
   await ev("gd.showTab('alg'); true");
   await ev(`(() => { const i = document.querySelector('#input'); i.value = 'A = (1, 1)'; i.form.requestSubmit(); i.value = 'SetColor(A, "green")'; i.form.requestSubmit(); return true; })()`);
   check(await ev("gd.cons.get('A').style.color") === '#138d75', 'styling statements work in the input bar');
+  // --- toolbar groups and search -------------------------------------------
+  await ev("gd.setTool('move'); document.querySelector('#tools .tb[data-g=circles]').click(); true");
+  check(await ev("gd.S.tool === 'circle' && !document.querySelector('#flyout').hidden && document.querySelectorAll('#flyout .flyitem').length > 3"),
+    'one click on a tool group picks its tool and shows all its tools');
+  check(await ev("!!document.querySelector('#flyout .flyitem small') && document.querySelector('#tools .tb[data-g=circles]').getAttribute('aria-expanded') === 'true'"), 'each listed tool has a one-line description');
+  await ev("document.querySelector('#tools .tb[data-g=circles]').click(); true");
+  check(await ev("document.querySelector('#flyout').hidden"), 'a second click closes the list');
+  const ctrlK = async () => { for (const type of ['keyDown', 'keyUp']) await client.send('Input.dispatchKeyEvent', { type, key: 'k', code: 'KeyK', modifiers: 2 }); await delay(80); };
+  await ctrlK();
+  check(await ev("!document.querySelector('#palette').hidden && document.activeElement.id === 'pq' && /Getting started/.test(document.querySelector('#pres').textContent)"), 'Ctrl+K opens search, with a short guide when empty');
+  const searchFor = async q => { await ev(`(() => { const i = document.querySelector('#pq'); i.value = ${JSON.stringify(q)}; i.dispatchEvent(new Event('input')); return true; })()`); return ev("[...document.querySelectorAll('#pres .pi')].slice(0, 3).map(b => b.textContent).join(' | ')"); };
+  let top3 = await searchFor('eraser');
+  check(/^Tool\s*Delete/.test(top3), `searching "eraser" finds the Delete tool first (${top3.slice(0, 60)})`);
+  await key('Enter', 'Enter'); await delay(50);
+  check(await ev("gd.S.tool === 'delete' && document.querySelector('#palette').hidden"), 'Enter picks the result and closes search');
+  await ctrlK();
+  top3 = await searchFor('circumcircle');
+  check(/Command\s*Circumcircle/.test(top3), `commands are searchable (${top3.slice(0, 80)})`);
+  await ev("[...document.querySelectorAll('#pres .pi')].find(b => /^Command/.test(b.textContent) && /Circumcircle/.test(b.textContent)).click(); true");
+  check(await ev("document.querySelector('#input').value === 'Circumcircle(' && document.activeElement.id === 'input'"), 'choosing a command puts it in the input bar');
+  await ev("document.querySelector('#input').value = ''; document.querySelector('#input').blur(); gd.setTool('move'); true");
+  await ctrlK();
+  top3 = await searchFor('export');
+  check(/Action/.test(top3), `menu actions are searchable (${top3.slice(0, 60)})`);
+  await key('Escape', 'Escape'); await delay(50);
+  check(await ev("document.querySelector('#palette').hidden"), 'Esc closes search');
+
   // --- damaged share links explain themselves -------------------------------
   await ev("location.hash = '#c=zDAMAGEDLINK'; location.reload(); true").catch(() => {});
   await delay(1200);
