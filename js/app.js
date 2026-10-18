@@ -793,11 +793,11 @@ function startAnim() { if (!animRaf) { animLast = 0; animRaf = requestAnimationF
 
 // ---------- toolbar ----------
 
-let flyGroup = null, flyOpenT = 0, flyCloseT = 0, lastPointer = '';
+let flyGroup = null, flyOpenT = 0, flyCloseT = 0, hoverG = null;
 // Tool groups. With a mouse, hovering a group opens the list of all its tools
 // (after a short pause, so passing over the toolbar does not flash menus) and
-// leaving it closes the list; a click picks the group's current tool. On touch
-// (no hover) a tap picks the tool and opens the list; a second tap closes it.
+// leaving it closes the list. A click (or tap) picks the group's current tool
+// and toggles the list, so a second click reopens it after picking.
 // Right-click and long-press open the list too.
 function renderToolbar() {
   const nav = $('#tools');
@@ -812,20 +812,24 @@ function renderToolbar() {
       title: `${label}: ${cur.name}${cur.key ? ` (${cur.key.toUpperCase()})` : ''}${more ? ` - ${tools.length} tools, hover or right-click to see them` : ''}`,
       'aria-label': `${cur.name}${more ? `, ${label}: ${tools.length} tools` : ''}`, 'aria-pressed': active ? 'true' : 'false',
       'aria-haspopup': more ? 'menu' : null,
-      onclick: ev => {
-        const mouse = ev.detail > 0 && lastPointer === 'mouse';
+      // A click picks the tool and toggles the list: it closes a list that is
+      // open (hovered open, say) and opens a closed one, mouse or touch alike.
+      onclick: () => {
         const open = flyGroup === g && !$('#flyout').hidden;
         if (S.tool !== cur.id) setTool(cur.id);
-        if (mouse || (more && open)) closeFlyout();
-        else if (more) openFlyout(g, $(`#tools .tb[data-g="${g}"]`));
+        if (more && !open) openFlyout(g, $(`#tools .tb[data-g="${g}"]`));
+        else closeFlyout();
       },
       html: cur.svg + (more ? '<span class="more" aria-hidden="true"></span>' : ''),
     });
     b.addEventListener('contextmenu', ev => { ev.preventDefault(); toggleFlyout(g, b); });
-    b.addEventListener('pointerenter', ev => { if (ev.pointerType === 'mouse') hoverFlyout(more ? g : null, b); });
-    b.addEventListener('pointerleave', ev => { if (ev.pointerType === 'mouse') flyCloseSoon(); });
+    // Picking a tool re-renders the toolbar, and the browser reports the new
+    // button under a still cursor as a fresh hover: ignore it (hoverG), or a
+    // click that closed the list would reopen it a moment later.
+    b.addEventListener('pointerenter', ev => { if (ev.pointerType !== 'mouse' || hoverG === g) return; hoverG = g; hoverFlyout(more ? g : null, b); });
+    b.addEventListener('pointerleave', ev => { if (ev.pointerType !== 'mouse') return; hoverG = null; flyCloseSoon(); });
     let press = 0;
-    b.addEventListener('pointerdown', ev => { lastPointer = ev.pointerType; if (ev.pointerType === 'mouse') return; press = setTimeout(() => { press = -1; openFlyout(g, b); }, 450); });
+    b.addEventListener('pointerdown', ev => { if (ev.pointerType === 'mouse') return; press = setTimeout(() => { press = -1; openFlyout(g, b); }, 450); });
     b.addEventListener('pointerup', ev => { if (press === -1) ev.stopPropagation(); clearTimeout(press); });
     nav.append(b);
   }

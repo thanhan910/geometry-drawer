@@ -336,9 +336,27 @@ try {
   const [lx, ly] = await btnAt('lines');
   await mouse('mouseMoved', lx, ly, { buttons: 0 }); await delay(120);
   check(await ev("/Lines/i.test(document.querySelector('#flyout .flyhead').textContent)"), 'moving to the next group switches the list at once');
+  // Clicking with the mouse: picks the tool and toggles the list, so after
+  // picking, a second click on the same group shows the list again.
+  const mclick = async (x, y) => { await mouse('mousePressed', x, y); await mouse('mouseReleased', x, y); await delay(80); };
+  const inLines = "['line', 'segment', 'segfixed', 'ray', 'vector', 'vecfrom', 'polyline'].includes(gd.S.tool)";   // the group's remembered tool
+  await mclick(lx, ly);
+  check(await ev(`${inLines} && document.querySelector('#flyout').hidden`), 'clicking a hovered-open group picks its tool and closes the list');
+  await mclick(lx, ly);
+  check(await ev("!document.querySelector('#flyout').hidden && /Lines/i.test(document.querySelector('#flyout .flyhead').textContent)"), 'clicking the same group again reopens its list without hovering out');
+  await mclick(lx, ly);
+  check(await ev(`document.querySelector('#flyout').hidden && ${inLines}`), 'and a third click closes it again');
+  await mclick(lx, ly);
+  await ev("document.querySelectorAll('#flyout .flyitem')[1].click(); true");
+  check(await ev("gd.S.tool === 'segment' && document.querySelector('#flyout').hidden"), 'picking from the list closes it');
+  await mclick(lx, ly);
+  check(await ev("!document.querySelector('#flyout').hidden"), 'after picking from the list, one click on the group shows it again');
   const [cx0, cy0] = await at(3, 1);
   await mouse('mouseMoved', cx0, cy0, { buttons: 0 }); await delay(450);
   check(await ev("document.querySelector('#flyout').hidden"), 'leaving the toolbar closes the list');
+  await mouse('mouseMoved', lx, ly, { buttons: 0 }); await delay(400);
+  check(await ev("!document.querySelector('#flyout').hidden"), 'hovering back in opens it again');
+  await mouse('mouseMoved', cx0, cy0, { buttons: 0 }); await delay(450);
   await ev("gd.cons.load([]); gd.setTool('point'); true");
   await mouse('mouseMoved', px, py, { buttons: 0 }); await delay(400);
   await mouse('mouseMoved', cx0, cy0, { buttons: 0 });

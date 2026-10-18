@@ -161,7 +161,10 @@ calls `recompute(from)`.
 - The page's CSP means no inline scripts, no `eval` and no workers on the
   page itself. Load code as files under `js/`.
 - Tool groups open on hover with a mouse (220 ms pause, 300 ms grace to
-  reach the list) and on tap for touch. A canvas press while a list or the
+  reach the list); a click or tap picks the tool and toggles the list.
+  Picking re-renders the toolbar and the browser then reports a fresh
+  `pointerenter` on the new button under the cursor; `hoverG` ignores it, or
+  a closed list would reopen by itself. A canvas press while a list or the
   menu is open only closes it, so dismissing never draws a stray point.
 - A toolbar click re-renders the toolbar, detaching the clicked button before
   the click reaches `document`. Outside-click handlers must use
