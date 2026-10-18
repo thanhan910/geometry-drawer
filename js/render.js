@@ -7,6 +7,27 @@ import { fmtNum } from './expr.js';
 
 const { PI, abs, hypot, cos, sin, min, max } = Math;
 
+// The view {cx, cy, scale} that fits every visible object in W × H, or null.
+export function fitView(cons, W, H, margin = 1.3) {
+  const xs = [], ys = [];
+  const add = p => { if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) { xs.push(p.x); ys.push(p.y); } };
+  const box = (c, r) => { add({ x: c.x - r, y: c.y - r }); add({ x: c.x + r, y: c.y + r }); };
+  for (const o of cons.objs) {
+    if (o.style.hidden) continue;
+    const v = o.val;
+    if (v.t === 'pt') add(v);
+    if (v.t === 'pts' || v.t === 'poly') v.pts.forEach(add);
+    if (v.t === 'locus') v.pts.forEach(p => p && add(p));
+    if (v.t === 'circle' || v.t === 'arc') box(v.c, v.r);
+    if (v.t === 'text' && v.pos) add(v.pos);
+    if (v.t === 'conic') { const ci = conicInfo(v); if (ci.type === 'ellipse') box(ci.c, Math.max(ci.a, ci.b)); }
+  }
+  if (!xs.length) return null;
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const w = Math.max(x1 - x0, 1e-3), h = Math.max(y1 - y0, 1e-3);
+  return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, scale: Math.min(W / (w * margin), H / (h * margin), 1e6) };
+}
+
 export class View {
   constructor() { this.cx = 0; this.cy = 0; this.scale = 50; this.W = 800; this.H = 600; }
   sx(x) { return (x - this.cx) * this.scale + this.W / 2; }
@@ -72,7 +93,7 @@ function hexA(hex, a) {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
-// Liang–Barsky: clip p + t d (screen coords) to the padded viewport.
+// Liang-Barsky: clip p + t d (screen coords) to the padded viewport.
 function clip(view, x0, y0, dx, dy, t0, t1) {
   const m = 20, xmin = -m, ymin = -m, xmax = view.W + m, ymax = view.H + m;
   const p = [-dx, dx, -dy, dy], q = [x0 - xmin, xmax - x0, y0 - ymin, ymax - y0];

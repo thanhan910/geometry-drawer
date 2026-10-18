@@ -7,7 +7,7 @@ import { fmtNum } from './expr.js';
 
 const { abs, hypot, max, min, PI, cos, sin } = Math;
 
-// Ramer–Douglas–Peucker on a flat [x0, y0, x1, y1, …] screen polyline.
+// Ramer-Douglas-Peucker on a flat [x0, y0, x1, y1, …] screen polyline.
 function simplify(pl, tol = 0.35) {
   const n = pl.length / 2;
   if (n <= 2) return pl;
@@ -132,7 +132,7 @@ export function exportDiagram(cons, R, format) {
   const lw = w => +(w * 0.4).toFixed(2);
   const lines = [];
   if (format === 'tikz') {
-    lines.push('% Geometry Drawer export — needs \\usepackage{tikz}');
+    lines.push('% Geometry Drawer export - needs \\usepackage{tikz}');
     for (const [hex, n] of colors) lines.push(`\\definecolor{${n}}{RGB}{${hexRGB(hex).join(',')}}`);
     lines.push(`\\begin{tikzpicture}[x=${f(unit)}cm, y=${f(unit)}cm, line cap=round, line join=round, font=\\small]`);
     lines.push(`\\clip ${P2([b.xmin, b.ymin])} rectangle ${P2([b.xmax, b.ymax])};`);
@@ -169,7 +169,7 @@ export function exportDiagram(cons, R, format) {
     }
     lines.push('\\end{tikzpicture}');
   } else {
-    lines.push('// Geometry Drawer export — compile with: asy -f pdf file.asy');
+    lines.push('// Geometry Drawer export - compile with: asy -f pdf file.asy');
     lines.push(`unitsize(${f(unit)}cm);`, 'defaultpen(fontsize(10pt));');
     for (const [hex, n] of colors) lines.push(`pen ${n} = rgb(${hexRGB(hex).map(c => f(c / 255)).join(',')});`);
     const pen = p => [cname(p.color), `linewidth(${lw(p.width)})`, p.dash === 1 ? 'dashed' : p.dash === 2 ? 'dotted' : null].filter(Boolean).join('+');

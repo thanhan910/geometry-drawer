@@ -41,7 +41,7 @@ visitor's browser, and nothing is stored on the server.
 
 ### For olympiad geometry
 
-- **Check relation (`Q`):** click 2–4 objects. It reports whether points are
+- **Check relation (`Q`):** click 2-4 objects. It reports whether points are
   collinear or concyclic, lines concurrent, parallel or perpendicular, circles
   tangent, orthogonal or coaxal, and whether four points form a harmonic
   range or quadrilateral. It also finds equal distances, right angles, and
@@ -54,11 +54,11 @@ visitor's browser, and nothing is stored on the server.
   ∠BAC = ∠BDC and the rest. **Mark** draws a class with matching arcs and a
   shared colour.
 - **Theorem demos** (*Menu*): Euler line, nine-point circle and Feuerbach,
-  Simson line, butterfly theorem, Miquel's theorem, the incentre–excentre
+  Simson line, butterfly theorem, Miquel's theorem, the incentre-excentre
   lemma, Pascal, Ptolemy, radical centre, and inscribed angles. Each is a
   live construction with a short explanation and a button that runs the
   relation check (or the angle finder) on the theorem's key objects.
-- **Triangle centres:** Kimberling X(1)–X(11), X(13), X(14), X(20), X(40),
+- **Triangle centres:** Kimberling X(1)-X(11), X(13), X(14), X(20), X(40),
   plus excentres, excircles, the nine-point circle, the Euler line, altitudes,
   medians, symmedians, and the medial, orthic, intouch, pedal and cevian
   triangles.
@@ -74,8 +74,8 @@ visitor's browser, and nothing is stored on the server.
   `AreConcurrent`, `AreParallel`, `ArePerpendicular`, `AreEqual`,
   `AreTangent`, `IsOn`.
 - **Diagram conventions:** `Angle(A, B, C)` is ∠ABC, at most 180°.
-  `OrientedAngle` gives the counter-clockwise 0–360° angle. Equal segments
-  get 1–3 tick marks and equal angles 1–3 arcs (set them in the properties
+  `OrientedAngle` gives the counter-clockwise 0-360° angle. Equal segments
+  get 1-3 tick marks and equal angles 1-3 arcs (set them in the properties
   panel). `I_A` and `A_{12}` draw as real subscripts.
 - **Write-ups:** *Menu → Export Asymptote / TikZ* turns the visible diagram
   into code that compiles with `asy` or `pdflatex`.
@@ -84,6 +84,45 @@ visitor's browser, and nothing is stored on the server.
   circumcircle or incircle, a cyclic quadrilateral, or two circles, and turns
   on the clean diagram (no axes or grid).
 - Light and dark themes, touch and pinch-zoom, and a phone layout.
+
+### Scripts
+
+The **Script** tab, above the algebra list, runs whole programs.
+
+- **Commands:** one input-bar statement per line, with `#` or `//` comments.
+  Besides definitions, scripts and the input bar accept styling and view
+  statements: `SetColor(k, "red")`, `SetLineStyle(e, "dashed")`,
+  `SetMarks(s, 2)`, `SetCaption(P, "X")`, `Hide(O)`, `ShowAxes(false)`,
+  `ZoomIn(xmin, ymin, xmax, ymax)` and more. A failing line is reported with
+  its number and the rest still runs.
+- **JavaScript:** code that writes commands, for loops, families and
+  computed coordinates. `cmd("...")` adds a command, `point(name, x, y)` a
+  free point, and `range(n)` and `fmt(x)` help with loops. It runs in a
+  sandboxed Web Worker with no access to the page or saved data, and is
+  stopped after 3 seconds. JavaScript is never put in share links.
+- **From figure** turns the current construction into a script, styles
+  included. **Copy AI prompt** copies a description of the language that
+  teaches any AI chat to write scripts.
+
+### AI assistants (MCP)
+
+An MCP server lets Claude, or any MCP client, draw from plain language. The
+assistant writes a script, and the server runs it with the app's own engine.
+It returns errors by line, a PNG preview the assistant can look at, every
+object's value, and true/false checks re-tested on 40 random positions. It
+also returns a link that opens the figure in the app, with the assistant's
+title and explanation on a card.
+
+- **Server URL:** `https://nbg5pc.taileeca1e.ts.net/geometry-mcp/mcp`,
+  public, with no sign-in and nothing stored. A help page is at
+  `/geometry-mcp/`.
+- **Claude (web or desktop):** Settings, then Connectors, then *Add custom
+  connector*, and paste the URL.
+- **Claude Code:**
+  `claude mcp add --transport http geometry https://nbg5pc.taileeca1e.ts.net/geometry-mcp/mcp`
+- **Tools:** `geometry_language` returns the reference, and `draw_geometry`
+  takes `script`, optional `title`, `caption`, `verify` (a list of true/false
+  expressions), `show_axes` and `show_grid`.
 
 Press `?` in the app for every shortcut and command.
 
@@ -104,8 +143,16 @@ Press `?` in the app for every shortcut and command.
 ```bash
 node tests/run-tests.mjs       # engine tests: parser, commands, intersections, save/load
 node tests/browser-smoke.mjs   # drives the real page in headless Chromium
-bash scripts/deploy.sh         # both tests, then rsync to /var/www/geometry
+node mcp/test.mjs              # MCP server, end to end, through the official MCP client
+bash scripts/deploy.sh         # all three tests, rsync to /var/www/geometry, restart geometry-mcp
+sudo systemctl status geometry-mcp     # the MCP server (Node, port 5040, runs from mcp/)
+sudo journalctl -u geometry-mcp -f
 ```
+
+To set up the MCP server on a fresh machine, run `cd mcp && npm ci --omit=dev`,
+then
+`sudo cp mcp/geometry-mcp.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now geometry-mcp`.
+The Nginx routes are in `server-g5-setup-01`.
 
 To develop locally, serve the folder with any static server, for example
 `python3 -m http.server`, and open it. The page uses ES modules, so
@@ -113,14 +160,17 @@ To develop locally, serve the folder with any static server, for example
 
 ## After a reboot
 
-Nothing to do: it is static files in `/var/www/geometry`, served by Nginx.
+Nothing to do. The app is static files in `/var/www/geometry`, served by
+Nginx, and `geometry-mcp` is an enabled systemd unit.
 To check it, run
 `bash ~/Documents/GitHub/server-g5-setup-01/scripts/verify-deployment.sh`,
-which asserts the page and its script load, on the tailnet and publicly. If the
-page is missing, run `bash scripts/deploy.sh` again.
+which asserts the page, its script and the MCP health check, on the tailnet
+and publicly. If the page is missing, run `bash scripts/deploy.sh` again. If
+the MCP server is down, run `sudo systemctl restart geometry-mcp`.
 
 ## Not included
 
 GeoGebra's CAS, 3D, spreadsheet, probability and exam-mode views, lists and
 sequences, and its LaTeX text. User data never leaves the browser: there is no
-account and no server-side storage.
+account and no server-side storage. The MCP server only computes what an
+assistant sends it and keeps nothing.

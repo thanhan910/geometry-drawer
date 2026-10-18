@@ -119,6 +119,7 @@ function lookup(name, ctx) {
   if (v) return v;
   if (name === 'pi' || name === 'π') return num(PI);
   if (name === 'e') return num(Math.E);
+  if (name === 'true' || name === 'false') return { t: 'bool', v: name === 'true' };
   if (VARS.has(name)) throw new EvalError(`"${name}" only works in an equation (y = …) or a function f(x) = …`);
   // "xy", "ax", "ab" → product of single-letter names
   if (name.length > 1 && [...name].every(ch => (ctx.vars && ch in ctx.vars) || ctx.get(ch) || ch === 'π')) {
@@ -297,7 +298,7 @@ export function compileNum(n, ctx, slots) {
 
 function makeFn(v, body, ctx) {
   const fv = freeVars(body);
-  if (fv.has('y') && v !== 'y') throw new EvalError('A function of x cannot use y — write an equation instead');
+  if (fv.has('y') && v !== 'y') throw new EvalError('A function of x cannot use y - write an equation instead');
   const f = compileNum(body, ctx, { [v]: 0 });
   return { t: 'fn', f, v, body };
 }
@@ -1004,7 +1005,7 @@ function centroid(ps) {
   }
   return P(cx / (6 * A), cy / (6 * A));
 }
-// Oriented: counter-clockwise from a0 to a1, 0–360°. Otherwise the
+// Oriented: counter-clockwise from a0 to a1, 0-360°. Otherwise the
 // non-reflex angle (≤ 180°), which is what ∠ABC means in a proof.
 function angleV(c, a0, a1, oriented) {
   let sw = normAng(a1 - a0);
@@ -1330,8 +1331,8 @@ function angleCmd(oriented) {
     return null;
   };
 }
-def('Angle', 'Angle(A, B, C) — ∠ABC, at most 180°; Angle(line, line), Angle(vector)', angleCmd(false));
-def('OrientedAngle', 'OrientedAngle(A, B, C) — counter-clockwise from BA to BC, 0–360°', angleCmd(true));
+def('Angle', 'Angle(A, B, C) - ∠ABC, at most 180°; Angle(line, line), Angle(vector)', angleCmd(false));
+def('OrientedAngle', 'OrientedAngle(A, B, C) - counter-clockwise from BA to BC, 0-360°', angleCmd(true));
 def('Distance', 'Distance(A, B), Distance(A, line)', (a, ctx) => {
   if (sig(a, 'pt', 'pt')) return anchor(num(dist(a[0], a[1])), mid(a[0], a[1]));
   const pp = a[0] && a[0].t === 'pt' ? [a[0], a[1]] : [a[1], a[0]];
@@ -1387,7 +1388,7 @@ def('Dot', 'Dot(u, v)', a => (a.length === 2 && a.every(v => v.t === 'vec' || v.
 def('Cross', 'Cross(u, v)', a => (a.length === 2 && a.every(v => v.t === 'vec' || v.t === 'pt') ? num(crs(a[0], a[1])) : null));
 
 function needsObj(v) { return v.t !== 'num' && v.t !== 'str' && v.t !== 'bool'; }
-def('Reflect Mirror Invert', 'Reflect(object, line|point|circle) — a circle means inversion', (a, ctx) => {
+def('Reflect Mirror Invert', 'Reflect(object, line|point|circle) - a circle means inversion', (a, ctx) => {
   if (a.length !== 2 || !needsObj(a[0])) return null;
   if (isLinear(a[1]) && a[1].t !== 'vec') return transform(a[0], mReflectLine(a[1]));
   if (a[1].t === 'pt') return transform(a[0], mDilate(-1, a[1]));
@@ -1472,7 +1473,7 @@ def('Curve', 'Curve(x(t), y(t), t, a, b)', (n, ctx) => {
   if (t0.t !== 'num' || t1.t !== 'num') return UNDEF;
   return { t: 'curve', fx: compileNum(n[0], ctx, slots), fy: compileNum(n[1], ctx, slots), t0: t0.v, t1: t1.v };
 }, true);
-def('Locus', 'Locus(P, Q) — Q a point on a path, or a slider', (n, ctx) => {
+def('Locus', 'Locus(P, Q) - Q a point on a path, or a slider', (n, ctx) => {
   if (n.length !== 2 || n[0].k !== 'id' || n[1].k !== 'id') throw new EvalError('Use Locus(point, point on path or slider)');
   if (!ctx.locus) return UNDEF;
   return ctx.locus(n[0].n, n[1].n);

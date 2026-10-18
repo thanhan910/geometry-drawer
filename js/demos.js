@@ -52,7 +52,7 @@ export const DEMOS = [
     check: ['k_1', 'k_2', 'k_3'],
   },
   {
-    title: 'Incentre–excentre lemma',
+    title: 'Incentre-excentre lemma',
     caption: 'The bisector from A meets the circumcircle again at M, the midpoint of arc BC. Then MB = MC = MI = MI_A: B, C, the incentre I and the excentre I_A all lie on a circle centred at M.',
     lines: [...TRI, 'ω = Circumcircle(A, B, C)', 'I = Incenter(A, B, C)', 'I_A = Excenter(A, B, C)', 'M = ArcMidpoint(A, B, C)', 'd = Segment(A, I_A)',
       'k = Circle(M, B)', 'mb = Segment(M, B)', 'mi = Segment(M, I)', 'mc = Segment(M, C)'],

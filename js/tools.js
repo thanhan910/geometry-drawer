@@ -143,7 +143,7 @@ export const TOOLS = [
   { id: 'spiral', group: 'olympiad', name: 'Spiral Similarity Centre', help: 'Select A, B, then their images C, D', patterns: [['pt', 'pt', 'pt', 'pt']], make: one('pt', s => `SpiralCenter(${s.join(', ')})`), preview: true },
   { id: 'harmonic', group: 'olympiad', name: 'Harmonic Conjugate', help: 'Select A, B, then C: D on AB with (A, B; C, D) = −1', patterns: PT3, make: one('pt', s => `HarmonicConjugate(${s.join(', ')})`), preview: true },
   { id: 'anglechase', group: 'olympiad', name: 'Find Equal Angles', key: 'u', help: 'Lists every class of equal angles between drawn lines (checked on random positions). Click the canvas to search again', special: 'anglechase' },
-  { id: 'relation', group: 'olympiad', name: 'Check Relation', key: 'q', help: 'Select 2–4 objects: collinear, concyclic, concurrent, tangent, equal… and whether it always holds', special: 'relation' },
+  { id: 'relation', group: 'olympiad', name: 'Check Relation', key: 'q', help: 'Select 2-4 objects: collinear, concyclic, concurrent, tangent, equal… and whether it always holds', special: 'relation' },
 
   { id: 'polygon', group: 'polygons', name: 'Polygon', key: 'g', help: 'Select vertices; click the first one again to close', special: 'polygon' },
   { id: 'regpolygon', group: 'polygons', name: 'Regular Polygon', help: 'Select two points, then enter the number of vertices', patterns: PT2,

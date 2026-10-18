@@ -4,10 +4,13 @@
 import { parseStatement, parseExpr, print, fmtNum } from './expr.js';
 import { describe, toText, intersections, closest, conicInfo, isPath, isLinear, CANON, HELP, evaluate } from './geom.js';
 import { Construction, kindOf, isPtLit, isNumLit } from './construction.js';
-import { Renderer, THEMES, role, defaultLabelMode } from './render.js';
+import { Renderer, THEMES, role, defaultLabelMode, fitView } from './render.js';
 import { TOOLS, TOOL, GROUPS, prime } from './tools.js';
 import { CENTER_LIST, relations, R as R_ } from './olympiad.js';
 import { DEMOS } from './demos.js';
+import { runScript, toScript, STATEMENTS } from './script.js';
+import { languageGuide } from './guide.js';
+import { renderSVG } from './svgctx.js';
 import { exportDiagram } from './export.js';
 
 const $ = s => document.querySelector(s);
@@ -108,10 +111,11 @@ function persistSoon() {
   clearTimeout(persistTimer);
   persistTimer = setTimeout(() => store.set('gd:doc', docJSON()), 300);
 }
-const docJSON = () => ({ format: 'geometry-drawer', version: 1, view: view.toJSON(), objects: cons.toJSON() });
+const docJSON = () => ({ format: 'geometry-drawer', version: 1, view: view.toJSON(), settings: { grid: S.settings.grid, axes: S.settings.axes }, objects: cons.toJSON() });
 function loadDoc(doc) {
   if (!doc || !Array.isArray(doc.objects)) throw new Error('Not a Geometry Drawer file');
   if (doc.view) Object.assign(view, { cx: +doc.view.cx || 0, cy: +doc.view.cy || 0, scale: +doc.view.scale || 50 });
+  if (doc.settings) { for (const k of ['grid', 'axes']) if (typeof doc.settings[k] === 'boolean') S.settings[k] = doc.settings[k]; saveSettings(); }
   cons.bounds = view.bounds();
   const errs = cons.load(doc.objects);
   for (const o of cons.objs) if (o.ast.k === 'fn') S.fnColor++;
@@ -285,7 +289,7 @@ function toolClick(sx, sy, e) {
   sel.push(picked);
   const done = tool.patterns.map((p, i) => [p, i]).find(([p]) => p.length === sel.length && sel.every((n, k) => matches(cons.get(n), p[k])));
   if (done) finish(tool, sel.slice(), done[1]);
-  else hint(`${tool.help} — ${sel.length} selected`);
+  else hint(`${tool.help} - ${sel.length} selected`);
   render();
   return picked;
 }
@@ -497,7 +501,7 @@ function multiPoint(tool, sx, sy, hits, e, closed) {
   if (!picked) { picked = pointAt(sx, sy, hits, e); if (picked) commit(); }
   if (!picked) return;
   sel.push(picked);
-  hint(closed ? `${sel.length} vertices — click the first one to close` : `${sel.length} points — click the last one again to finish`);
+  hint(closed ? `${sel.length} vertices - click the first one to close` : `${sel.length} points - click the last one again to finish`);
   render();
   return picked;
 }
@@ -780,7 +784,7 @@ function renderToolbar() {
     const cur = TOOL[S.groupTool[g]] || tools[0];
     const active = TOOL[S.tool].group === g;
     const b = el('button', {
-      class: 'tb' + (active ? ' on' : ''), title: `${cur.name}${cur.key ? ` (${cur.key.toUpperCase()})` : ''} — ${label}`,
+      class: 'tb' + (active ? ' on' : ''), title: `${cur.name}${cur.key ? ` (${cur.key.toUpperCase()})` : ''} - ${label}`,
       'aria-label': cur.name, 'aria-pressed': active ? 'true' : 'false',
       onclick: () => { if (active && tools.length > 1) toggleFlyout(g, b); else { setTool(cur.id); if (tools.length > 1 && cur.id === tools[0].id && !S.groupTool[g + ':seen']) {} } },
       html: cur.svg + (tools.length > 1 ? '<span class="more"></span>' : ''),
@@ -941,6 +945,15 @@ $('#inputForm').addEventListener('submit', ev => {
   const src = input.value.trim();
   if (!src) return;
   if (suggest.items.length && !suggest.box.hidden) return applySuggest();
+  const m = /^([A-Za-z]+)\s*\(/.exec(src);
+  if (m && STATEMENTS[m[1].toLowerCase()]) {
+    const r = runScript(cons, src, { defaultStyle });
+    if (r.errors.length) { $('#inputErr').textContent = r.errors[0].msg; return; }
+    applyScriptEffects(r);
+    S.inputHist.push(src); S.inputIdx = -1; input.value = ''; $('#inputErr').textContent = '';
+    commit(); refreshProps();
+    return;
+  }
   try {
     const existed = (() => { try { const st = parseStatement(src); return st.name && cons.has(st.name); } catch { return false; } })();
     const before = existed && typeLabel(cons.get(parseStatement(src).name));
@@ -1199,6 +1212,7 @@ function openMenu() {
   item('Open file…', () => $('#file').click(), 'Ctrl+O');
   item('Save file', saveFile, 'Ctrl+S');
   item('Export PNG', exportPng);
+  item('Export SVG', exportSvg);
   item('Export Asymptote / TikZ…', () => showExport('asy'));
   item('Copy share link', shareLink);
   m.append(el('hr'));
@@ -1244,7 +1258,7 @@ function exportPng() {
   off.toBlob(b => download('construction.png', b), 'image/png');
 }
 async function encodeDoc() {
-  const json = JSON.stringify({ v: view.toJSON(), o: cons.toJSON() });
+  const json = JSON.stringify({ v: view.toJSON(), s: { grid: S.settings.grid, axes: S.settings.axes }, o: cons.toJSON() });
   const bytes = new TextEncoder().encode(json);
   let data = bytes, tag = 'u';
   if (typeof CompressionStream !== 'undefined') {
@@ -1262,11 +1276,11 @@ async function decodeDoc(s) {
   if (tag === 'z') text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
   else text = new TextDecoder().decode(bytes);
   const d = JSON.parse(text);
-  return { format: 'geometry-drawer', version: 1, view: d.v, objects: d.o };
+  return { format: 'geometry-drawer', version: 1, view: d.v, settings: d.s, objects: d.o, info: d.i && { title: String(d.i.t || ''), caption: String(d.i.c || '') } };
 }
 async function shareLink() {
   const url = `${location.origin}${location.pathname}#c=${await encodeDoc()}`;
-  try { await navigator.clipboard.writeText(url); toast('Link copied — it contains the whole construction'); }
+  try { await navigator.clipboard.writeText(url); toast('Link copied - it contains the whole construction'); }
   catch { prompt('Copy this link:', url); }
 }
 $('#file').addEventListener('change', async ev => {
@@ -1279,61 +1293,15 @@ $('#file').addEventListener('change', async ev => {
 
 function standardView() { Object.assign(view, { cx: 0, cy: 0, scale: 50 }); viewChanged(); }
 function fitAll() {
-  const xs = [], ys = [];
-  const addP = p => { if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) { xs.push(p.x); ys.push(p.y); } };
-  for (const o of cons.objs) {
-    if (o.style.hidden) continue;
-    const v = o.val;
-    if (v.t === 'pt') addP(v);
-    if (v.t === 'pts' || v.t === 'poly') v.pts.forEach(addP);
-    if (v.t === 'circle' || v.t === 'arc') { addP({ x: v.c.x - v.r, y: v.c.y - v.r }); addP({ x: v.c.x + v.r, y: v.c.y + v.r }); }
-    if (v.t === 'text' && v.pos) addP(v.pos);
-    if (v.t === 'conic') { const ci = conicInfo(v); if (ci.type === 'ellipse') { const r = Math.max(ci.a, ci.b); addP({ x: ci.c.x - r, y: ci.c.y - r }); addP({ x: ci.c.x + r, y: ci.c.y + r }); } }
-  }
-  if (!xs.length) return standardView();
-  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-  const w = Math.max(x1 - x0, 1e-3), h = Math.max(y1 - y0, 1e-3);
-  view.scale = Math.min(view.W / (w * 1.3), view.H / (h * 1.3), 1e6);
-  view.cx = (x0 + x1) / 2; view.cy = (y0 + y1) / 2;
+  const f = fitView(cons, view.W, view.H);
+  if (!f) return standardView();
+  Object.assign(view, f);
   viewChanged();
 }
 
 // ---------- relation checker ----------
 
-// Drag the construction through random nearby positions and re-test each
-// relation: a theorem survives, a coincidence of this picture does not.
-// Run fn() after each of `trials` random nudges of every free point (and
-// every point sliding on a path), then restore. False if nothing is free.
-function perturbRuns(trials, fn) {
-  const free = cons.objs.filter(o => cons.isFreePoint(o) || (cons.isOnPath(o) && o.ast.a[1].k === 'num'));
-  if (!free.length) return false;
-  const saved = free.map(o => JSON.stringify(o.ast));
-  const ps = free.filter(o => o.val.t === 'pt').map(o => o.val);
-  let spread = 0;
-  for (const a of ps) for (const b of ps) spread = Math.max(spread, Math.hypot(a.x - b.x, a.y - b.y));
-  if (!spread) spread = (cons.bounds.xmax - cons.bounds.xmin) / 4;
-  const orig = free.map(o => (o.val.t === 'pt' ? { x: o.val.x, y: o.val.y } : null));
-  cons.noTrace = true;
-  try {
-    for (let i = 0; i < trials; i++) {
-      free.forEach((o, k) => {
-        const a = JSON.parse(saved[k]);
-        if (a.k === 'pt') {
-          const r = spread * 0.15 * Math.sqrt(Math.random()), t = Math.random() * 2 * Math.PI;
-          a.x = { k: 'num', v: orig[k].x + r * Math.cos(t) }; a.y = { k: 'num', v: orig[k].y + r * Math.sin(t) };
-        } else a.a[1] = { k: 'num', v: a.a[1].v + (Math.random() - 0.5) * 0.15 };
-        o.ast = a;
-      });
-      cons.recompute();
-      fn();
-    }
-  } finally {
-    free.forEach((o, k) => { o.ast = JSON.parse(saved[k]); });
-    cons.recompute();
-    cons.noTrace = false;
-  }
-  return true;
-}
+const perturbRuns = (trials, fn) => cons.perturb(trials, fn);
 
 // Drag the construction through random nearby positions and re-test each
 // relation: a theorem survives, a coincidence of this picture does not.
@@ -1445,7 +1413,7 @@ function showAngleChase() {
     const shown = g.angles.slice(0, 6).map(nm).join(' = ') + (g.angles.length > 6 ? ` (+${g.angles.length - 6})` : '');
     const deg = `${fmtNum(g.deg, S.settings.digits)}°`;
     list.append(el('li', { class: 'yes' }, el('span', { class: 'mark', style: `background:${CHASE_COLORS[gi % CHASE_COLORS.length]}` }, g.right ? '⊾' : String(g.angles.length)),
-      el('div', { class: 'grow' }, el('div', {}, g.right && g.angles.length === 1 ? `${shown} = 90°` : shown), el('small', {}, `${deg} — equal in all random positions`)),
+      el('div', { class: 'grow' }, el('div', {}, g.right && g.angles.length === 1 ? `${shown} = 90°` : shown), el('small', {}, `${deg} - equal in all random positions`)),
       el('button', { class: 'btn small', title: 'Draw these angles with matching marks', onclick: () => markAngles(g, gi) }, 'Mark')));
   });
   box.append(list);
@@ -1474,11 +1442,11 @@ function showRelations() {
     let cls, sub;
     if (!r.holds) { cls = 'no'; sub = 'not true here'; }
     else if (!c) { cls = 'yes'; sub = 'true (nothing free to move)'; }
-    else if (c.n && c.ok >= c.n * 0.97) { cls = 'yes'; sub = `always — held in ${c.ok} of ${c.n} random positions`; }
-    else { cls = 'here'; sub = `only in this picture — fails in ${c.n - c.ok} of ${c.n} random positions`; }
+    else if (c.n && c.ok >= c.n * 0.97) { cls = 'yes'; sub = `always - held in ${c.ok} of ${c.n} random positions`; }
+    else { cls = 'here'; sub = `only in this picture - fails in ${c.n - c.ok} of ${c.n} random positions`; }
     list.append(el('li', { class: cls }, el('span', { class: 'mark' }, cls === 'yes' ? '✓' : cls === 'here' ? '≈' : '✗'), el('div', {}, el('div', {}, r.text), el('small', {}, sub))));
   });
-  if (!shown.length) list.append(el('li', { class: 'no' }, el('span', { class: 'mark' }, '–'), el('div', {}, 'No special relation found')));
+  if (!shown.length) list.append(el('li', { class: 'no' }, el('span', { class: 'mark' }, '-'), el('div', {}, 'No special relation found')));
   box.append(list);
   box.hidden = false;
 }
@@ -1545,6 +1513,161 @@ function showExport(fmt) {
   dlg.append(form);
   dlg.onclose = null;
   dlg.showModal();
+}
+
+// ---------- scripts ----------
+
+function applyScriptEffects(r) {
+  let changed = false;
+  for (const k of ['grid', 'axes']) if (k in r.settings) { S.settings[k] = r.settings[k]; changed = true; }
+  if (changed) saveSettings();
+  if (r.view) {
+    const v = r.view;
+    view.scale = Math.min(view.W / (v.xmax - v.xmin), view.H / (v.ymax - v.ymin));
+    view.cx = (v.xmin + v.xmax) / 2; view.cy = (v.ymin + v.ymax) / 2;
+    viewChanged();
+  }
+}
+
+const SCRIPT_EXAMPLES = {
+  cmd: `# One statement per line, exactly like the input bar.
+# Lines starting with # or // are comments.
+A = (-3, -2)
+B = (4, -2)
+C = (-0.5, 3.2)
+a = Segment(B, C)
+b = Segment(C, A)
+c = Segment(A, B)
+ω = Circumcircle(A, B, C)
+H = Orthocenter(A, B, C)
+e = EulerLine(A, B, C)
+SetLineStyle(e, "dashed")
+SetColor(e, "red")
+ShowAxes(false)
+ShowGrid(false)
+`,
+  js: `// JavaScript that writes construction commands.
+// cmd("...") adds one; point(name, x, y) adds a free point;
+// range(n) and fmt(x) help with loops. Runs in a sandbox.
+const n = 7, r = 3;
+for (const k of range(n)) {
+  const t = 2 * Math.PI * k / n;
+  point("P_" + k, r * Math.cos(t), r * Math.sin(t));
+}
+// connect every vertex to the one 3 steps ahead: a star polygon {7/3}
+for (const k of range(n)) cmd(\`s_\${k} = Segment(P_\${k}, P_\${(k + 3) % n})\`);
+cmd("ω = Circle((0, 0), " + r + ")", "ShowAxes(false)", "ShowGrid(false)");
+`,
+};
+
+const WORKER_SRC = `
+self.onmessage = e => {
+  const out = [], logs = [];
+  const cmd = (...a) => { for (const s of a) { if (out.length >= 5000) throw new Error('more than 5000 commands'); out.push(String(s)); } };
+  const range = (a, b, s = 1) => { if (b === undefined) { b = a; a = 0; } const r = []; for (let x = a; s > 0 ? x < b : x > b; x += s) r.push(x); return r; };
+  const fmt = (x, d = 6) => String(+Number(x).toFixed(d));
+  const point = (name, x, y) => cmd(name + ' = (' + fmt(x) + ', ' + fmt(y) + ')');
+  const log = (...a) => logs.push(a.join(' '));
+  try {
+    new Function('cmd', 'range', 'fmt', 'point', 'log', '"use strict";\\n' + e.data)(cmd, range, fmt, point, log);
+    self.postMessage({ out, logs });
+  } catch (err) {
+    const m = /<anonymous>:(\\d+):\\d+/.exec(String(err && err.stack));
+    self.postMessage({ out, logs, error: String(err && err.message || err), line: m ? +m[1] - 3 : null });
+  }
+};`;
+
+// User JavaScript runs in a Web Worker: no page, no storage, killed after 3 s.
+function runJS(code) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' }));
+    const w = new Worker(url);
+    const done = r => { clearTimeout(timer); w.terminate(); URL.revokeObjectURL(url); resolve(r); };
+    const timer = setTimeout(() => done({ out: [], logs: [], error: 'Stopped after 3 seconds (an endless loop?)' }), 3000);
+    w.onmessage = e => done(e.data);
+    w.onerror = e => { e.preventDefault(); done({ out: [], logs: [], error: e.message }); };
+    w.postMessage(code);
+  });
+}
+
+function showTab(tab) {
+  const scripting = tab === 'script';
+  document.body.classList.toggle('scripting', scripting);
+  $('#scriptPane').hidden = !scripting;
+  for (const b of document.querySelectorAll('#atabs button')) { b.classList.toggle('on', b.dataset.tab === tab); b.setAttribute('aria-selected', b.dataset.tab === tab); }
+  if (scripting) { loadScriptDraft(); $('#scriptText').focus(); }
+}
+function loadScriptDraft() {
+  if (S.scriptLoaded) return;
+  S.scriptLoaded = true;
+  const d = store.get('gd:script') || {};
+  $('#scriptLang').value = d.lang || 'cmd';
+  $('#scriptText').value = d.text ?? SCRIPT_EXAMPLES[d.lang || 'cmd'];
+}
+const saveScriptDraft = () => store.set('gd:script', { lang: $('#scriptLang').value, text: $('#scriptText').value });
+
+async function runScriptPane() {
+  const lang = $('#scriptLang').value, text = $('#scriptText').value, out = $('#scriptOut');
+  out.textContent = '';
+  let program = text, logs = [], from = 'line';
+  if (lang === 'js') {
+    out.textContent = 'Running…';
+    const r = await runJS(text);
+    out.textContent = '';
+    logs = r.logs || [];
+    if (r.error) {
+      out.append(el('div', { class: 'e', onclick: () => r.line && gotoLine(r.line) }, `JavaScript error${r.line ? ` on line ${r.line}` : ''}: ${r.error}`));
+      return;
+    }
+    program = r.out.join('\n');
+    from = 'command';
+  }
+  if ($('#scriptReplace').checked) { cons.load([]); S.selection.clear(); S.fnColor = 0; }
+  const res = runScript(cons, program, { defaultStyle });
+  applyScriptEffects(res);
+  commit();
+  if (!res.view && $('#scriptReplace').checked) fitAll();
+  out.append(el('div', { class: 'ok' }, `✓ ${res.created.length} object${res.created.length === 1 ? '' : 's'} created${res.errors.length ? `, ${res.errors.length} error${res.errors.length === 1 ? '' : 's'}` : ''}`));
+  for (const e of res.errors.slice(0, 50)) {
+    out.append(el('div', { class: 'e', title: 'Go to line', onclick: () => from === 'line' && gotoLine(e.line) },
+      `${from} ${e.line}: ${e.src ? e.src + ' - ' : ''}${e.msg}`));
+  }
+  for (const l of logs.slice(0, 20)) out.append(el('div', {}, `log: ${l}`));
+}
+function gotoLine(n) {
+  const ta = $('#scriptText'), lines = ta.value.split('\n');
+  const start = lines.slice(0, n - 1).reduce((s, l) => s + l.length + 1, 0);
+  ta.focus(); ta.setSelectionRange(start, start + (lines[n - 1] || '').length);
+}
+
+document.querySelectorAll('#atabs button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+$('#scriptRun').addEventListener('click', runScriptPane);
+$('#scriptText').addEventListener('keydown', e => {
+  e.stopPropagation();
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runScriptPane(); }
+  if (e.key === 'Tab') { e.preventDefault(); const t = e.target, p = t.selectionStart; t.setRangeText('  ', p, t.selectionEnd, 'end'); }
+});
+$('#scriptText').addEventListener('input', () => { clearTimeout(S.scriptSave); S.scriptSave = setTimeout(saveScriptDraft, 400); });
+$('#scriptLang').addEventListener('change', () => {
+  const ta = $('#scriptText'), other = $('#scriptLang').value === 'js' ? 'cmd' : 'js';
+  if (!ta.value.trim() || ta.value === SCRIPT_EXAMPLES[other]) ta.value = SCRIPT_EXAMPLES[$('#scriptLang').value];
+  saveScriptDraft();
+});
+$('#scriptFrom').addEventListener('click', () => {
+  $('#scriptLang').value = 'cmd';
+  $('#scriptText').value = `# The current construction as a script\n${toScript(cons)}ShowAxes(${S.settings.axes})\nShowGrid(${S.settings.grid})\n`;
+  saveScriptDraft();
+});
+$('#scriptAI').addEventListener('click', async () => {
+  const prompt = `${languageGuide()}\n---\nYou write scripts in the language above. Reply with only the script, in one code block, no explanations.\nDraw: `;
+  try { await navigator.clipboard.writeText(prompt); toast('Prompt copied. Paste it into any AI chat, add what to draw, then paste the script it writes here and press Run.'); }
+  catch { download('geometry-ai-prompt.txt', new Blob([prompt], { type: 'text/plain' })); }
+});
+
+function exportSvg() {
+  const svg = renderSVG(Renderer, cons, { view: view.toJSON(), theme: THEMES.light, settings: { ...S.settings }, width: Math.round(view.W), height: Math.round(view.H) });
+  render();
+  download('construction.svg', new Blob([svg], { type: 'image/svg+xml' }));
 }
 
 // ---------- theorem demos ----------
@@ -1617,10 +1740,10 @@ function showHelp() {
       ' · text ', el('code', {}, 'Text("Area: " + Area(poly1), (1, 1))'), '. Redefine by assigning to an existing name. Implicit multiplication works: ', el('code', {}, '2x y'), '.'),
     el('h2', {}, 'Olympiad geometry'),
     el('ul', { class: 'guide' },
-      el('li', {}, el('b', {}, 'Check relation (Q): '), 'click 2–4 objects. You get collinear / concyclic / concurrent / tangent / equal… and whether it holds ', el('i', {}, 'always'), ' (tested on 40 random positions) or only in this picture.'),
+      el('li', {}, el('b', {}, 'Check relation (Q): '), 'click 2-4 objects. You get collinear / concyclic / concurrent / tangent / equal… and whether it holds ', el('i', {}, 'always'), ' (tested on 40 random positions) or only in this picture.'),
       el('li', {}, el('b', {}, 'Find equal angles (U): '), 'lists every class of equal angles between drawn segments and lines through named points. Press Mark to draw them with matching arcs.'),
       el('li', {}, el('b', {}, 'Olympiad tools: '), 'triangle centres (incentre … X(40)), feet of perpendiculars, excircles, the nine-point circle, the Euler line, arc midpoints, antipodes, radical axes, common tangents, isogonal conjugates, spiral centres and harmonic conjugates.'),
-      el('li', {}, el('b', {}, 'Menu → Theorem demos: '), 'Euler line, nine-point circle, Simson, butterfly, Miquel, the incentre–excentre lemma, Pascal, Ptolemy, radical centre and inscribed angles, each with a Check button.'),
+      el('li', {}, el('b', {}, 'Menu → Theorem demos: '), 'Euler line, nine-point circle, Simson, butterfly, Miquel, the incentre-excentre lemma, Pascal, Ptolemy, radical centre and inscribed angles, each with a Check button.'),
       el('li', {}, el('b', {}, 'Menu → Export Asymptote / TikZ: '), 'the visible diagram as code for your write-up. Marks: select a segment or angle and pick ticks or arcs in its properties.'),
       el('li', {}, el('b', {}, 'Menu → Step through construction'), ' replays a figure one object at a time; ', el('b', {}, 'New from template'), ' starts a triangle, a cyclic quadrilateral and more.'),
       el('li', {}, el('b', {}, 'Input bar: '), el('code', {}, 'Orthocenter(A, B, C)'), ', ', el('code', {}, 'SecondIntersection(Line(A, P), ω, A)'), ', ', el('code', {}, 'AreConcyclic(A, B, C, D)'), ', ', el('code', {}, 'Reflect(s, ω)'), ' (inversion). Names like ', el('code', {}, 'I_A'), ' get subscripts.')),
@@ -1727,9 +1850,11 @@ async function start() {
   R.resize(Math.max(50, st.width), Math.max(50, st.height), window.devicePixelRatio || 1);
   try {
     if (location.hash.startsWith('#c=')) {
-      loadDoc(await decodeDoc(location.hash.slice(3)));
+      const doc = await decodeDoc(location.hash.slice(3));
+      loadDoc(doc);
       history.replaceState(null, '', location.pathname);
-      toast('Opened the shared construction');
+      if (doc.info && (doc.info.title || doc.info.caption)) S.pendingInfo = doc.info;
+      else toast('Opened the shared construction');
     } else {
       const d = store.get('gd:doc');
       if (d) loadDoc(d);
@@ -1739,8 +1864,9 @@ async function start() {
   commit();
   viewChanged();
   if (cons.objs.some(o => o.style.anim)) startAnim();
+  if (S.pendingInfo) showInfo({ title: S.pendingInfo.title || 'Shared construction', caption: S.pendingInfo.caption });
 }
 start();
 
 // Exposed for the browser smoke test and for power users in the console.
-window.gd = { loadDemo, applyTemplate, exportDiagram: f => exportDiagram(cons, R, f), enterSteps, goStep, exitSteps, cons, view, S, exec: src => { const o = cons.exec(src, defaultStyle); commit(); return o; }, setTool, undo, redo, render, R, docJSON, encodeDoc, decodeDoc };
+window.gd = { showTab, runScriptPane, toScript: () => toScript(cons), loadDemo, applyTemplate, exportDiagram: f => exportDiagram(cons, R, f), enterSteps, goStep, exitSteps, cons, view, S, exec: src => { const o = cons.exec(src, defaultStyle); commit(); return o; }, setTool, undo, redo, render, R, docJSON, encodeDoc, decodeDoc };

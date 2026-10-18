@@ -216,6 +216,40 @@ export class Construction {
     return out.length ? out : null;
   }
 
+  // Run fn() after each of `trials` random nudges of every free point (and
+  // every point sliding on a path), then restore. False if nothing is free.
+  // Behind "always / only in this picture" and the equal-angle finder.
+  perturb(trials, fn) {
+    const free = this.objs.filter(o => this.isFreePoint(o) || (this.isOnPath(o) && o.ast.a[1].k === 'num'));
+    if (!free.length) return false;
+    const saved = free.map(o => JSON.stringify(o.ast));
+    const ps = free.filter(o => o.val.t === 'pt').map(o => o.val);
+    let spread = 0;
+    for (const a of ps) for (const b of ps) spread = Math.max(spread, Math.hypot(a.x - b.x, a.y - b.y));
+    if (!spread) spread = (this.bounds.xmax - this.bounds.xmin) / 4;
+    const orig = free.map(o => (o.val.t === 'pt' ? { x: o.val.x, y: o.val.y } : null));
+    this.noTrace = true;
+    try {
+      for (let i = 0; i < trials; i++) {
+        free.forEach((o, k) => {
+          const a = JSON.parse(saved[k]);
+          if (a.k === 'pt') {
+            const r = spread * 0.15 * Math.sqrt(Math.random()), t = Math.random() * 2 * Math.PI;
+            a.x = { k: 'num', v: orig[k].x + r * Math.cos(t) }; a.y = { k: 'num', v: orig[k].y + r * Math.sin(t) };
+          } else a.a[1] = { k: 'num', v: a.a[1].v + (Math.random() - 0.5) * 0.15 };
+          o.ast = a;
+        });
+        this.recompute();
+        fn();
+      }
+    } finally {
+      free.forEach((o, k) => { o.ast = JSON.parse(saved[k]); });
+      this.recompute();
+      this.noTrace = false;
+    }
+    return true;
+  }
+
   // ---------- locus ----------
 
   locus(pName, qName) {

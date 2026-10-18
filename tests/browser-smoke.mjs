@@ -288,6 +288,30 @@ try {
   await click(2, 1); const kk2 = await ev("[gd.view.sx(2) , 0]"); await click(0, 2);
   check(await ev("gd.cons.objs.at(-1).val.t") === 'arc', 'inversion tool maps a segment to an arc');
   await key('Escape', 'Escape');
+  // --- script panel ------------------------------------------------------------
+  await ev("gd.showTab('script'); true");
+  const runPane = async (lang, text) => {
+    await ev(`(() => { document.querySelector('#scriptLang').value = ${JSON.stringify(lang)}; document.querySelector('#scriptText').value = ${JSON.stringify(text)}; document.querySelector('#scriptReplace').checked = true; return true; })()`);
+    await ev("gd.runScriptPane().then(() => true)");
+    await delay(50);
+    return ev("document.querySelector('#scriptOut').textContent");
+  };
+  let outp = await runPane('cmd', 'A = (0, 0)\nB = (4, 0)\n# comment\nC = (1, 3)\nk = Circumcircle(A, B, C)\nSetColor(k, "red")\nZ = Midpoint(A, Q)\nShowAxes(false)');
+  check(/4 objects created, 1 error/.test(outp) && /line 7/.test(outp), `command script runs and reports line 7 (${outp.slice(0, 80)})`);
+  check(await ev("gd.cons.get('k').style.color === '#c0392b' && gd.S.settings.axes === false"), 'script styling and ShowAxes applied');
+  outp = await runPane('js', 'for (const k of range(6)) point("P_" + k, Math.cos(k), Math.sin(k));\ncmd("poly = Polygon(P_0, P_1, P_2, P_3, P_4, P_5)")');
+  check(/7 objects created/.test(outp) && await ev("gd.cons.get('poly').val.pts.length") === 6, `JavaScript script generates a hexagon (${outp.slice(0, 60)})`);
+  outp = await runPane('js', 'let x = 1;\nfoo();');
+  check(/line 2/.test(outp) && /foo/.test(outp), `JavaScript errors give the line (${outp})`);
+  outp = await runPane('js', 'while (true) {}');
+  check(/3 seconds/.test(outp), 'endless JavaScript loop is stopped');
+  outp = await runPane('js', 'cmd(typeof document, typeof localStorage)');
+  check(await ev("gd.cons.objs.length") === 0 && /error/.test(outp), 'sandboxed JavaScript cannot see the page');
+  const sc = await ev("gd.toScript()");
+  check(sc === '', 'empty construction gives an empty script');
+  await ev("gd.showTab('alg'); true");
+  await ev(`(() => { const i = document.querySelector('#input'); i.value = 'A = (1, 1)'; i.form.requestSubmit(); i.value = 'SetColor(A, "green")'; i.form.requestSubmit(); return true; })()`);
+  check(await ev("gd.cons.get('A').style.color") === '#138d75', 'styling statements work in the input bar');
   // --- phone layout -------------------------------------------------------
   await client.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 800, deviceScaleFactor: 2, mobile: true });
   await delay(250);

@@ -1,5 +1,5 @@
 // The input language: tokenizer, parser, printer, dependency walk, rename and
-// symbolic derivative. Pure functions over a small AST, no DOM — the unit
+// symbolic derivative. Pure functions over a small AST, no DOM - the unit
 // tests import this file directly under Node.
 //
 // AST nodes:
@@ -15,7 +15,7 @@ const GREEK = 'αβγδεζηθικλμνξοπρστυφχψωΑΒΓΔΕΖΗΘ�
 // Free variables of equations and function bodies; never object names.
 export const VARS = new Set(['x', 'y']);
 
-// Names that are called even with a space before "(" — everything else
+// Names that are called even with a space before "(" - everything else
 // followed by " (" is an implicit multiplication, as in "a (x + 1)".
 export const MATH_FNS = new Set(['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'arcsin', 'arccos', 'arctan',
   'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh', 'sec', 'csc', 'cot', 'sqrt', 'cbrt', 'abs', 'exp', 'ln',

@@ -25,6 +25,24 @@
 <div id="menu" hidden></div>
 <main>
   <aside id="algebra" aria-label="Algebra view">
+    <div id="atabs" role="tablist">
+      <button role="tab" data-tab="alg" class="on" aria-selected="true">Algebra</button>
+      <button role="tab" data-tab="script" aria-selected="false">Script</button>
+    </div>
+    <div id="scriptPane" hidden>
+      <div class="sbar">
+        <select id="scriptLang" aria-label="Script language">
+          <option value="cmd">Commands</option>
+          <option value="js">JavaScript</option>
+        </select>
+        <button id="scriptRun" class="btn primary small" title="Run (Ctrl+Enter)">Run</button>
+        <button id="scriptFrom" class="btn small" title="Write the current construction as a script">From figure</button>
+        <button id="scriptAI" class="btn small" title="Copy a prompt that teaches any AI chat this language">Copy AI prompt</button>
+      </div>
+      <label class="cb sreplace"><input type="checkbox" id="scriptReplace" checked> Replace the current construction</label>
+      <textarea id="scriptText" spellcheck="false" autocapitalize="off" aria-label="Script"></textarea>
+      <div id="scriptOut" role="status"></div>
+    </div>
     <div id="alist"></div>
     <form id="inputForm" autocomplete="off">
       <div id="suggest" hidden></div>

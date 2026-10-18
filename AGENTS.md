@@ -1,6 +1,7 @@
-# Agent Brief — Geometry Drawer
+# Agent Brief - Geometry Drawer
 
-A static, dependency-free dynamic geometry web app (GeoGebra-style). The user
+A static, dependency-free dynamic geometry web app (GeoGebra-style), plus a
+small Node MCP server in `mcp/` that lets AI assistants draw with it. The user
 guide is in `README.md`. Host integration (Nginx, Homepage, exposure) belongs
 to `server-g5-setup-01`; do not restate it here.
 
@@ -8,7 +9,10 @@ to `server-g5-setup-01`; do not restate it here.
 
 Deployed at `/geometry/`, **public** since 2026-10-18 (operator decision),
 from `/var/www/geometry`. 81 engine tests (including one per theorem demo) and the headless browser
-smoke test pass. The Asymptote and TikZ exports were compiled with real `asy` and
+smoke test pass, and so does the MCP end-to-end test (`node mcp/test.mjs`). The MCP
+server is public at `/geometry-mcp/mcp` since 2026-10-18 (the operator
+delegated the choice), running as systemd `geometry-mcp` on :5040. The
+Asymptote and TikZ exports were compiled with real `asy` and
 `pdflatex` in a throwaway Debian container (2026-10-18). Neither tool is
 installed on the host. Pushed to GitHub (`origin/main`).
 
@@ -38,6 +42,12 @@ The modules load in dependency order:
    its theorem holds.
 4. `js/render.js` draws to a Canvas 2D context. Each draw caches screen
    geometry in `o._g`, and hit testing reads that cache.
+   `js/script.js` runs scripts: many statements, plus styling and view
+   statements (`STATEMENTS`), and `toScript()`, the inverse. `js/guide.js`
+   generates the language guide from the live command table. Both the
+   "Copy AI prompt" button and the MCP `geometry_language` tool use it.
+   `js/svgctx.js` is a Canvas-to-SVG recorder, so the same Renderer can draw
+   SVG for the export and on the server.
    `js/export.js` builds Asymptote and TikZ output from that cached geometry,
    converted back to world coordinates.
 5. `js/tools.js` holds the tool table. Each tool has selection patterns and a
@@ -50,6 +60,12 @@ so the input bar, save files, undo and share links all share one format.
 **Free objects** are literal ASTs: a number, `(x, y)`, `45°`,
 `Point(path, t)`, or `Text(s, (x, y))`. Dragging rewrites the literal and
 calls `recompute(from)`.
+
+6. `mcp/draw.mjs` runs a script, perturbs it to test checks, renders a PNG
+   (svgctx, then resvg with the DejaVu fonts) and builds the share link (the
+   app's `#c=z…` format, plus `i` for the title card). `mcp/server.mjs` is
+   stateless Streamable HTTP: one fresh McpServer per POST, using
+   `@modelcontextprotocol/sdk`.
 
 ## Invariants
 
@@ -72,11 +88,21 @@ calls `recompute(from)`.
 - **Commands return `null` for a wrong signature.** `call()` then raises the
   usage message from `HELP`. Return `UNDEF` only for valid input with no
   result.
+- **User JavaScript only runs in the Web Worker** (`runJS` in `app.js`), with
+  a 3 s kill, and is never saved in documents or share links. Shared links
+  carry only the construction language, which cannot run code.
+- **The MCP server stays stateless and stores nothing.** That is the
+  justification for running it public with no auth: nginx throttles it to
+  60 requests a minute per client, limits the body to 256 KB, and
+  `draw.mjs` caps scripts at 20,000 characters and 600 statements.
 - **Public, so nothing server-side.** The workspace exposure table is the
   authority on who can reach `/geometry/`. Adding any server storage or API
   would need a new exposure decision first.
 
 ## Gotchas
+
+- `mcp/` imports `../js/*.js` from this checkout. After any engine change,
+  restart `geometry-mcp`; `scripts/deploy.sh` does that.
 
 - An identifier followed directly by `(` is a call (`f(x)`, `x(A)`). With a
   space it is a multiplication, unless it is a builtin or command name.

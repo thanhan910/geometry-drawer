@@ -5,6 +5,10 @@ import { describe as desc, intersections, conicInfo } from '../js/geom.js';
 import { Construction } from '../js/construction.js';
 import { relations } from '../js/olympiad.js';
 import { DEMOS } from '../js/demos.js';
+import { runScript, toScript } from '../js/script.js';
+import { languageGuide } from '../js/guide.js';
+import { renderSVG } from '../js/svgctx.js';
+import { Renderer, THEMES, fitView } from '../js/render.js';
 
 let pass = 0, fail = 0;
 const near = (a, b, e = 1e-6) => Math.abs(a - b) <= e * (1 + Math.abs(b));
@@ -288,7 +292,7 @@ t('relation finder: generality test sees a theorem', () => {
   ok(r[0].holds && /collinear/.test(r[0].text));
 });
 
-t('relation finder: incentre–excentre lemma MB = MI holds always', () => {
+t('relation finder: incentre-excentre lemma MB = MI holds always', () => {
   const c = cons([...T, 'M = ArcMidpoint(A, B, C)', 'I = Incenter(A, B, C)']);
   const r = relations(['M', 'B', 'I'].map(n => c.get(n)));
   ok(r.some(x => x.holds && x.text === 'MB = MI'), JSON.stringify(r.map(x => [x.text, x.holds])));
@@ -313,6 +317,48 @@ for (const d of DEMOS) t(`demo: ${d.title}`, () => {
     ok(r.some(x => x.holds), `no relation holds: ${JSON.stringify(r.map(x => [x.text, x.holds]))}`);
   }
   for (const o of c.objs) if (o.val.t === 'pt') ok(Math.hypot(o.val.x, o.val.y) < 25, `${o.name} far away`);
+});
+t('script: comments, styling, errors per line, view', () => {
+  const c = new Construction();
+  const r = runScript(c, `# a triangle
+A = (0, 0)   # free
+B = (4, 0)
+C = (1, 3)
+k = Circumcircle(A, B, C)
+SetColor(k, "red")
+SetLineStyle(k, "dashed")
+Z = Midpoint(A, Q)
+ShowAxes(false)
+ZoomIn(-1, -1, 5, 4)
+T = Text("# not a comment", (0, 0))`);
+  eq(r.created.join(','), 'A,B,C,k,T');
+  eq(r.errors.length, 1); eq(r.errors[0].line, 8); ok(/Unknown name/.test(r.errors[0].msg));
+  eq(c.get('k').style.color, '#c0392b'); eq(c.get('k').style.dash, 1);
+  eq(r.settings.axes, false); eq(r.view.xmax, 5); eq(c.get('T').val.s, '# not a comment');
+});
+t('script: toScript round-trips styles', () => {
+  const c = new Construction();
+  runScript(c, 'A = (1, 2)\nB = (3, 1)\ns = Segment(A, B)\nSetMarks(s, 2)\nSetColor(s, "blue")\nα = Angle(B, A, (0, 0))\nSetMarks(α, 3)\nHide(B)\nk: x^2 + y^2 = 4\nf(x) = x^2');
+  const d = new Construction();
+  const r = runScript(d, toScript(c));
+  eq(r.errors.length, 0, JSON.stringify(r.errors));
+  const canon = x => JSON.stringify(x.toJSON().map(o => ({ ...o, s: o.s && Object.fromEntries(Object.entries(o.s).sort()) })));
+  eq(canon(d), canon(c));
+});
+t('language guide lists every command and statement', () => {
+  const g = languageGuide();
+  for (const w of ['Circumcircle(A, B, C)', 'SecondIntersection', 'SetColor(obj', 'ZoomIn(', 'AreConcyclic']) ok(g.includes(w), w);
+  // every example line in the guide runs cleanly
+  const ex = g.split('## Example')[1].split('\n').slice(1).join('\n');
+  const r = runScript(new Construction(), ex);
+  eq(r.errors.length, 0, JSON.stringify(r.errors));
+});
+t('server-side SVG rendering of a demo', () => {
+  const c = cons(DEMOS[0].lines);
+  const view = fitView(c, 900, 640);
+  const svg = renderSVG(Renderer, c, { view, theme: THEMES.light, settings: { grid: false, axes: false } });
+  ok(svg.startsWith('<svg') && svg.includes('<path') && svg.includes('>H</text>'), svg.slice(0, 200));
+  ok(!/NaN/.test(svg), 'NaN in SVG');
 });
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

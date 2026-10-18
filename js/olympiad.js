@@ -77,7 +77,7 @@ const tri = a => sig(a, 'pt', 'pt', 'pt');
 const ptOrU = p => (p && Number.isFinite(p.x) && Number.isFinite(p.y) ? toPt(p) : UNDEF);
 const poly = ps => (ps.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y)) ? { t: 'poly', pts: ps.map(p => P(p.x, p.y)), closed: true } : UNDEF);
 
-def('TriangleCenter', 'TriangleCenter(A, B, C, n) — Kimberling X(n), n = ' + CENTER_LIST.map(c => c[0]).join(', '), a => {
+def('TriangleCenter', 'TriangleCenter(A, B, C, n) - Kimberling X(n), n = ' + CENTER_LIST.map(c => c[0]).join(', '), a => {
   if (!sig(a, 'pt', 'pt', 'pt', 'num')) return null;
   const n = Math.round(a[3].v);
   if (!CENTERS[n]) return null;
@@ -86,14 +86,14 @@ def('TriangleCenter', 'TriangleCenter(A, B, C, n) — Kimberling X(n), n = ' + C
 for (const [n, [name]] of Object.entries(CENTERS)) {
   if (name === 'Centroid') continue; // Centroid(polygon or points) already exists
   def(name + (name === 'SymmedianPoint' ? ' LemoinePoint' : name === 'Incenter' ? ' Incentre' : name === 'Circumcenter' ? ' Circumcentre' : name === 'Orthocenter' ? ' Orthocentre' : ''),
-    `${name}(A, B, C) — X(${n})`, a => (tri(a) ? ptOrU(center(a[0], a[1], a[2], +n)) : null));
+    `${name}(A, B, C) - X(${n})`, a => (tri(a) ? ptOrU(center(a[0], a[1], a[2], +n)) : null));
 }
-def('Excenter Excentre', 'Excenter(A, B, C) — the excentre opposite A', a => {
+def('Excenter Excentre', 'Excenter(A, B, C) - the excentre opposite A', a => {
   if (!tri(a) || degenerate(...a)) return tri(a) ? UNDEF : null;
   const { a: x, b: y, c: z } = sides(...a);
   return ptOrU(bary(...a, -x, y, z));
 });
-def('Excircle', 'Excircle(A, B, C) — the excircle opposite A', a => {
+def('Excircle', 'Excircle(A, B, C) - the excircle opposite A', a => {
   if (!tri(a)) return null;
   if (degenerate(...a)) return UNDEF;
   const { a: x, b: y, c: z } = sides(...a);
@@ -113,14 +113,14 @@ def('EulerLine', 'EulerLine(A, B, C)', a => {
   return lineV('line', O, sub(H, O));
 });
 const cevianSeg = (A, F) => (F && dist(A, F) > 0 ? { t: 'seg', p: P(A.x, A.y), d: sub(F, A) } : UNDEF);
-def('Altitude', 'Altitude(A, B, C) — segment from A to its foot on BC', a => (tri(a) ? cevianSeg(a[0], footOn(a[0], a[1], a[2])) : null));
-def('Median', 'Median(A, B, C) — segment from A to the midpoint of BC', a => (tri(a) ? cevianSeg(a[0], mid(a[1], a[2])) : null));
-def('Symmedian', 'Symmedian(A, B, C) — segment from A to the symmedian foot on BC', a => {
+def('Altitude', 'Altitude(A, B, C) - segment from A to its foot on BC', a => (tri(a) ? cevianSeg(a[0], footOn(a[0], a[1], a[2])) : null));
+def('Median', 'Median(A, B, C) - segment from A to the midpoint of BC', a => (tri(a) ? cevianSeg(a[0], mid(a[1], a[2])) : null));
+def('Symmedian', 'Symmedian(A, B, C) - segment from A to the symmedian foot on BC', a => {
   if (!tri(a)) return null;
   const { b, c } = sides(...a);
   return cevianSeg(a[0], bary(...a, 0, b * b, c * c));
 });
-def('Foot Projection', 'Foot(P, line) — foot of the perpendicular from P', a => {
+def('Foot Projection', 'Foot(P, line) - foot of the perpendicular from P', a => {
   const [Q, l] = a[0] && a[0].t === 'pt' ? a : [a[1], a[0]];
   if (a.length !== 2 || !Q || Q.t !== 'pt' || !l || !isLinear(l)) return null;
   const L = lin(l);
@@ -128,7 +128,7 @@ def('Foot Projection', 'Foot(P, line) — foot of the perpendicular from P', a =
 });
 def('MedialTriangle', 'MedialTriangle(A, B, C)', a => (tri(a) ? poly([mid(a[1], a[2]), mid(a[2], a[0]), mid(a[0], a[1])]) : null));
 def('OrthicTriangle', 'OrthicTriangle(A, B, C)', a => (tri(a) ? poly([footOn(a[0], a[1], a[2]), footOn(a[1], a[2], a[0]), footOn(a[2], a[0], a[1])]) : null));
-def('IntouchTriangle ContactTriangle', 'IntouchTriangle(A, B, C) — where the incircle touches the sides', a => {
+def('IntouchTriangle ContactTriangle', 'IntouchTriangle(A, B, C) - where the incircle touches the sides', a => {
   if (!tri(a)) return null;
   const { a: x, b: y, c: z } = sides(...a), s = (x + y + z) / 2;
   return poly([bary(...a, 0, s - z, s - y), bary(...a, s - z, 0, s - x), bary(...a, s - y, s - x, 0)]);
@@ -163,7 +163,7 @@ def('Trilinear', 'Trilinear(A, B, C, x, y, z)', a => {
   return ptOrU(bary(a[0], a[1], a[2], x * a[3].v, y * a[4].v, z * a[5].v));
 });
 
-def('SecondIntersection OtherIntersection', 'SecondIntersection(a, b, P) — the intersection of a and b that is not P', (a, ctx) => {
+def('SecondIntersection OtherIntersection', 'SecondIntersection(a, b, P) - the intersection of a and b that is not P', (a, ctx) => {
   if (a.length !== 3 || a[2].t !== 'pt' || a[0].t === 'pt' || a[1].t === 'pt') return null;
   const ps = intersections(a[0], a[1], ctx.bounds);
   if (!ps.length) return UNDEF;
@@ -196,7 +196,7 @@ function homothety(c1, c2, internal) {
   if (abs(c1.r - c2.r) < 1e-12 * (c1.r + c2.r)) return null;
   return mul(sub(mul(c1.c, c2.r), mul(c2.c, c1.r)), 1 / (c2.r - c1.r));
 }
-def('HomothetyCenter HomothetyCentre', 'HomothetyCenter(circle, circle), HomothetyCenter(circle, circle, 2) — external, or internal', a => {
+def('HomothetyCenter HomothetyCentre', 'HomothetyCenter(circle, circle), HomothetyCenter(circle, circle, 2) - external, or internal', a => {
   if (!(a.length >= 2 && circ(a[0]) && circ(a[1]))) return null;
   return ptOrU(homothety(a[0], a[1], a[2] && Math.round(a[2].v) === 2));
 });
@@ -212,11 +212,11 @@ export function commonTangents(c1, c2) {
   if (dist(c1.c, c2.c) >= c1.r + c2.r - 1e-12) out.push(...tangentsConic(Hi, c1));
   return out.filter(l => l && l.t === 'line');
 }
-def('CommonTangent', 'CommonTangent(circle, circle, n) — n = 1, 2 external, 3, 4 internal', a => {
+def('CommonTangent', 'CommonTangent(circle, circle, n) - n = 1, 2 external, 3, 4 internal', a => {
   if (!(a.length >= 2 && circ(a[0]) && circ(a[1]))) return null;
   return commonTangents(a[0], a[1])[a[2] ? Math.round(a[2].v) - 1 : 0] || UNDEF;
 });
-def('ArcMidpoint', 'ArcMidpoint(A, B, C) — midpoint of arc BC of the circumcircle not containing A', a => {
+def('ArcMidpoint', 'ArcMidpoint(A, B, C) - midpoint of arc BC of the circumcircle not containing A', a => {
   if (!tri(a)) return null;
   const k = circle3(...a);
   if (!k) return UNDEF;
@@ -248,7 +248,7 @@ const cx = {
   mul: (a, b) => P(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x),
   div: (a, b) => { const d = b.x * b.x + b.y * b.y; return P((a.x * b.x + a.y * b.y) / d, (a.y * b.x - a.x * b.y) / d); },
 };
-def('SpiralCenter SpiralCentre SpiralSimilarityCenter', 'SpiralCenter(A, B, C, D) — centre of the spiral similarity taking A→C and B→D', a => {
+def('SpiralCenter SpiralCentre SpiralSimilarityCenter', 'SpiralCenter(A, B, C, D) - centre of the spiral similarity taking A→C and B→D', a => {
   if (!sig(a, 'pt', 'pt', 'pt', 'pt')) return null;
   const [A, B, C, D] = a;
   if (dist(A, B) === 0) return UNDEF;
@@ -257,7 +257,7 @@ def('SpiralCenter SpiralCentre SpiralSimilarityCenter', 'SpiralCenter(A, B, C, D
   if (len(one) < 1e-12) return UNDEF;
   return ptOrU(cx.div(sub(C, cx.mul(k, A)), one));
 });
-def('MiquelPoint', 'MiquelPoint(l1, l2, l3, l4) — of the complete quadrilateral', a => {
+def('MiquelPoint', 'MiquelPoint(l1, l2, l3, l4) - of the complete quadrilateral', a => {
   if (!(a.length === 4 && a.every(isLinear))) return null;
   const L = a.map(v => ({ ...lin(v), t: 'line' }));
   const X = (i, j) => ll(L[i], L[j])[0];
@@ -269,7 +269,7 @@ def('MiquelPoint', 'MiquelPoint(l1, l2, l3, l4) — of the complete quadrilatera
   if (!ps.length) return UNDEF;
   return toPt(ps.reduce((b, p) => (dist(p, P12) > dist(b, P12) ? p : b)));
 });
-def('HarmonicConjugate', 'HarmonicConjugate(A, B, C) — D on AB with (A, B; C, D) = −1', a => {
+def('HarmonicConjugate', 'HarmonicConjugate(A, B, C) - D on AB with (A, B; C, D) = −1', a => {
   if (!tri(a)) return null;
   const [A, B, C] = a, d = sub(B, A), L2 = dot(d, d);
   if (!L2) return UNDEF;
@@ -284,7 +284,7 @@ export function crossRatio(A, B, C, D) {
   if (!len(d)) return null;
   return cx.div(n, d);
 }
-def('CrossRatio', 'CrossRatio(A, B, C, D) — for collinear or concyclic points', a => {
+def('CrossRatio', 'CrossRatio(A, B, C, D) - for collinear or concyclic points', a => {
   if (!sig(a, 'pt', 'pt', 'pt', 'pt')) return null;
   const r = crossRatio(...a);
   if (!r || abs(r.y) > 1e-7 * (1 + abs(r.x))) return UNDEF;
@@ -333,7 +333,7 @@ const simpleRatio = r => {
   return null;
 };
 
-// Everything notable about 2–4 selected objects. Each result has a `test`
+// Everything notable about 2-4 selected objects. Each result has a `test`
 // that re-checks it on fresh values, so the caller can perturb the
 // construction and ask "always, or only in this picture?".
 //   objs: [{name, val}]   →   [{text, holds, test(vals) → bool|null}]
@@ -437,7 +437,7 @@ def('AreConcyclic', 'AreConcyclic(A, B, C, D, …)', a => (a.length >= 4 && a.ev
 def('AreConcurrent', 'AreConcurrent(l1, l2, l3, …)', a => (a.length >= 3 && a.every(isLinear) ? B(a.slice(2).every(l => R.concurrent(a[0], a[1], l))) : null));
 def('AreParallel', 'AreParallel(l1, l2)', a => (a.length === 2 && a.every(isLinear) ? B(R.parallel(a[0], a[1])) : null));
 def('ArePerpendicular', 'ArePerpendicular(l1, l2)', a => (a.length === 2 && a.every(isLinear) ? B(R.perpendicular(a[0], a[1])) : null));
-def('AreEqual AreCongruent', 'AreEqual(a, b) — numbers, lengths, angles or points', a => {
+def('AreEqual AreCongruent', 'AreEqual(a, b) - numbers, lengths, angles or points', a => {
   if (a.length !== 2) return null;
   if (a.every(v => v.t === 'pt')) return B(dist(a[0], a[1]) <= EPS * max(1, len(a[0])));
   if (a.every(v => v.t === 'circle')) return B(R.equal(a[0].r, a[1].r));

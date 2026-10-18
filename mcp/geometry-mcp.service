@@ -1,0 +1,39 @@
+# Installed as /etc/systemd/system/geometry-mcp.service (copy, not symlink):
+#   sudo cp mcp/geometry-mcp.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now geometry-mcp
+[Unit]
+Description=Geometry Drawer MCP server - AI tools draw constructions
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=an
+Group=an
+WorkingDirectory=/home/an/Documents/GitHub/geometry-drawer/mcp
+Environment=PORT=5040
+Environment=HOST=127.0.0.1
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node server.mjs
+Restart=on-failure
+RestartSec=3
+
+# Stateless and public: it needs to read its own code and the fonts, and
+# nothing else. No writes anywhere.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+MemoryHigh=256M
+MemoryMax=384M
+CPUQuota=100%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
