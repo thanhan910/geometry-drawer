@@ -6,7 +6,8 @@ import { describe, toText, intersections, closest, conicInfo, isPath, isLinear, 
 import { Construction, kindOf, isPtLit, isNumLit } from './construction.js';
 import { Renderer, THEMES, role, defaultLabelMode } from './render.js';
 import { TOOLS, TOOL, GROUPS, prime } from './tools.js';
-import { CENTER_LIST, relations } from './olympiad.js';
+import { CENTER_LIST, relations, R as R_ } from './olympiad.js';
+import { DEMOS } from './demos.js';
 import { exportDiagram } from './export.js';
 
 const $ = s => document.querySelector(s);
@@ -473,6 +474,7 @@ const SPECIAL = {
     cons.remove([hits[0].o.name]);
     commit();
   },
+  anglechase() { showAngleChase(); },
   relation(tool, sx, sy, hits) {
     const h = hits.find(x => x.o.val.t !== 'text');
     if (!h) { S.tsel = []; showRelations(); render(); return; }
@@ -1191,7 +1193,7 @@ function openMenu() {
   const check = (label, k) => m.append(el('label', { class: 'mi' }, el('span', {}, label),
     el('input', { type: 'checkbox', checked: S.settings[k], onchange: ev => { S.settings[k] = ev.target.checked; saveSettings(); if (k === 'showAux') refreshAlgebra(); render(); } })));
   const choice = (label, k, opts) => m.append(el('label', { class: 'mi' }, el('span', {}, label),
-    el('select', { onchange: ev => { const v = ev.target.value; if (k === '__template') { closeMenu(); if (v) applyTemplate(v); return; } S.settings[k] = /^\d+$/.test(v) ? +v : v; saveSettings(); if (k === 'theme') applyTheme(); refreshAlgebra(); viewChanged(); } },
+    el('select', { onchange: ev => { const v = ev.target.value; if (k === '__template') { closeMenu(); if (v) applyTemplate(v); return; } if (k === '__demo') { closeMenu(); if (v) loadDemo(+v); return; } S.settings[k] = /^\d+$/.test(v) ? +v : v; saveSettings(); if (k === 'theme') applyTheme(); refreshAlgebra(); viewChanged(); } },
       ...opts.map(([v, l]) => el('option', { value: v, selected: String(S.settings[k]) === String(v) }, l)))));
   item('New', newDoc);
   item('Open file…', () => $('#file').click(), 'Ctrl+O');
@@ -1201,6 +1203,7 @@ function openMenu() {
   item('Copy share link', shareLink);
   m.append(el('hr'));
   item('Step through construction', enterSteps);
+  choice('Theorem demos', '__demo', [['', 'Choose…'], ...DEMOS.map((d, i) => [String(i), d.title])]);
   choice('New from template', '__template', [['', 'Choose…'], ...Object.keys(TEMPLATES).map(k => [k, k])]);
   m.append(el('hr'));
   item('Fit all objects', fitAll, 'F');
@@ -1299,15 +1302,17 @@ function fitAll() {
 
 // Drag the construction through random nearby positions and re-test each
 // relation: a theorem survives, a coincidence of this picture does not.
-function generality(names, tests, trials = 40) {
+// Run fn() after each of `trials` random nudges of every free point (and
+// every point sliding on a path), then restore. False if nothing is free.
+function perturbRuns(trials, fn) {
   const free = cons.objs.filter(o => cons.isFreePoint(o) || (cons.isOnPath(o) && o.ast.a[1].k === 'num'));
-  if (!free.length) return tests.map(() => null);
+  if (!free.length) return false;
   const saved = free.map(o => JSON.stringify(o.ast));
   const ps = free.filter(o => o.val.t === 'pt').map(o => o.val);
   let spread = 0;
   for (const a of ps) for (const b of ps) spread = Math.max(spread, Math.hypot(a.x - b.x, a.y - b.y));
   if (!spread) spread = (cons.bounds.xmax - cons.bounds.xmin) / 4;
-  const counts = tests.map(() => ({ ok: 0, n: 0 }));
+  const orig = free.map(o => (o.val.t === 'pt' ? { x: o.val.x, y: o.val.y } : null));
   cons.noTrace = true;
   try {
     for (let i = 0; i < trials; i++) {
@@ -1315,30 +1320,142 @@ function generality(names, tests, trials = 40) {
         const a = JSON.parse(saved[k]);
         if (a.k === 'pt') {
           const r = spread * 0.15 * Math.sqrt(Math.random()), t = Math.random() * 2 * Math.PI;
-          a.x = { k: 'num', v: o.val.x + r * Math.cos(t) }; a.y = { k: 'num', v: o.val.y + r * Math.sin(t) };
+          a.x = { k: 'num', v: orig[k].x + r * Math.cos(t) }; a.y = { k: 'num', v: orig[k].y + r * Math.sin(t) };
         } else a.a[1] = { k: 'num', v: a.a[1].v + (Math.random() - 0.5) * 0.15 };
         o.ast = a;
       });
       cons.recompute();
-      const vals = names.map(n => cons.get(n).val);
-      if (vals.some(v => v.t === 'undef')) continue;
-      tests.forEach((t, k) => {
-        let r = null;
-        try { r = t(vals); } catch { r = null; }
-        if (r === null) return;
-        counts[k].n++; if (r) counts[k].ok++;
-      });
+      fn();
     }
   } finally {
     free.forEach((o, k) => { o.ast = JSON.parse(saved[k]); });
     cons.recompute();
     cons.noTrace = false;
   }
-  return counts;
+  return true;
+}
+
+// Drag the construction through random nearby positions and re-test each
+// relation: a theorem survives, a coincidence of this picture does not.
+function generality(names, tests, trials = 40) {
+  const counts = tests.map(() => ({ ok: 0, n: 0 }));
+  const any = perturbRuns(trials, () => {
+    const vals = names.map(n => cons.get(n).val);
+    if (vals.some(v => v.t === 'undef')) return;
+    tests.forEach((t, k) => {
+      let r = null;
+      try { r = t(vals); } catch { r = null; }
+      if (r === null) return;
+      counts[k].n++; if (r) counts[k].ok++;
+    });
+  });
+  return any ? counts : tests.map(() => null);
+}
+
+// ---------- angle chasing ----------
+
+// Every angle formed at a named point by two drawn lines through other named
+// points, grouped into classes that stay equal under random perturbation.
+function findEqualAngles() {
+  const pts = cons.objs.filter(o => o.val.t === 'pt' && !o.style.hidden && !o.style.aux).slice(0, 40);
+  const lines = [];
+  for (const o of cons.objs) {
+    if (o.style.hidden) continue;
+    if (isLinear(o.val)) lines.push(o.val);
+    if (o.val.t === 'poly') o.val.pts.forEach((p, i, a) => { if (o.val.closed || i < a.length - 1) { const q = a[(i + 1) % a.length]; lines.push({ t: 'seg', p, d: { x: q.x - p.x, y: q.y - p.y } }); } });
+  }
+  const on = pts.map(p => lines.map(l => R_.onPath(p.val, l)));
+  const joined = (i, j) => lines.some((_, k) => on[i][k] && on[j][k]);
+  const angles = [], seen = new Set();
+  pts.forEach((Y, yi) => {
+    const rays = [];
+    pts.forEach((X, xi) => {
+      if (xi === yi || !joined(xi, yi)) return;
+      const dx = X.val.x - Y.val.x, dy = X.val.y - Y.val.y, L = Math.hypot(dx, dy);
+      if (L < 1e-12) return;
+      const u = { x: dx / L, y: dy / L };
+      if (rays.some(r => Math.hypot(r.u.x - u.x, r.u.y - u.y) < 1e-9)) return;
+      const opp = rays.find(r => Math.hypot(r.u.x + u.x, r.u.y + u.y) < 1e-9);
+      rays.push({ u, rep: X.name, line: opp ? opp.line : rays.length, sign: opp ? -opp.sign : 1 });
+    });
+    for (let i = 0; i < rays.length; i++) for (let j = i + 1; j < rays.length; j++) {
+      const r1 = rays[i], r2 = rays[j];
+      if (r1.line === r2.line) continue;
+      const key = `${Y.name}|${Math.min(r1.line, r2.line)}|${Math.max(r1.line, r2.line)}|${r1.sign * r2.sign}`;
+      if (seen.has(key)) continue;          // the vertical angle is the same angle
+      seen.add(key);
+      angles.push([r1.rep, Y.name, r2.rep]);
+    }
+  });
+  if (angles.length > 4000) angles.length = 4000;
+  const value = ([x, y, z]) => {
+    const X = cons.get(x).val, Y = cons.get(y).val, Z = cons.get(z).val;
+    if (X.t !== 'pt' || Y.t !== 'pt' || Z.t !== 'pt') return NaN;
+    const a = Math.atan2(X.y - Y.y, X.x - Y.x), b = Math.atan2(Z.y - Y.y, Z.x - Y.x);
+    let d = Math.abs(a - b) % (2 * Math.PI);
+    if (d > Math.PI) d = 2 * Math.PI - d;
+    return d * 180 / Math.PI;
+  };
+  const sig = angles.map(a => [value(a)]);
+  perturbRuns(12, () => angles.forEach((a, k) => sig[k].push(value(a))));
+  const same = (s, t) => {
+    let n = 0;
+    for (let k = 0; k < s.length; k++) {
+      if (!Number.isFinite(s[k]) || !Number.isFinite(t[k])) continue;
+      if (Math.abs(s[k] - t[k]) > 1e-6) return false;
+      n++;
+    }
+    return n >= Math.min(8, s.length);
+  };
+  const idx = angles.map((_, k) => k).filter(k => sig[k][0] > 1e-6 && sig[k][0] < 180 - 1e-6).sort((p, q) => sig[p][0] - sig[q][0]);
+  const groups = [];
+  let run = [];
+  const flush = () => {
+    const gs = [];
+    for (const k of run) { const g = gs.find(g => same(sig[g[0]], sig[k])); g ? g.push(k) : gs.push([k]); }
+    groups.push(...gs);
+    run = [];
+  };
+  for (const k of idx) { if (run.length && sig[k][0] - sig[run[0]][0] > 1e-6) flush(); run.push(k); }
+  flush();
+  const right = groups.filter(g => Math.abs(sig[g[0]][0] - 90) < 1e-6 && sig[g[0]].every(v => !Number.isFinite(v) || Math.abs(v - 90) < 1e-6));
+  return groups.filter(g => g.length >= 2 || right.includes(g))
+    .map(g => ({ angles: g.map(k => angles[k]), deg: sig[g[0]][0], right: right.includes(g) }))
+    .sort((a, b) => b.angles.length - a.angles.length || a.deg - b.deg);
+}
+
+const CHASE_COLORS = ['#c0392b', '#2457d6', '#138d75', '#8e44ad', '#d35400', '#b8860b', '#e84393', '#00a8c6'];
+function markAngles(group, gi) {
+  const N = allocator();
+  const items = group.angles.slice(0, 8).map(a => ({ name: N('angle'), src: `Angle(${a.join(', ')})`,
+    style: { arcs: group.right ? undefined : (gi % 3) + 1, color: CHASE_COLORS[gi % CHASE_COLORS.length], label: false } }));
+  if (createItems(items)) commit();
+}
+function showAngleChase() {
+  const box = $('#rel');
+  box.textContent = '';
+  const t0 = performance.now();
+  const groups = findEqualAngles();
+  const ms = Math.round(performance.now() - t0);
+  box.append(el('div', { class: 'relh' }, el('b', {}, 'Equal angles'), ` ${groups.length} group${groups.length === 1 ? '' : 's'}`));
+  if (!groups.length) box.append(el('p', { class: 'relhint' }, 'No equal angles between drawn lines. Angles are measured at named points, between segments or lines that pass through other named points.'));
+  const list = el('ul', { class: 'rels' });
+  const nm = a => `∠${a.join('')}`;
+  groups.slice(0, 30).forEach((g, gi) => {
+    const shown = g.angles.slice(0, 6).map(nm).join(' = ') + (g.angles.length > 6 ? ` (+${g.angles.length - 6})` : '');
+    const deg = `${fmtNum(g.deg, S.settings.digits)}°`;
+    list.append(el('li', { class: 'yes' }, el('span', { class: 'mark', style: `background:${CHASE_COLORS[gi % CHASE_COLORS.length]}` }, g.right ? '⊾' : String(g.angles.length)),
+      el('div', { class: 'grow' }, el('div', {}, g.right && g.angles.length === 1 ? `${shown} = 90°` : shown), el('small', {}, `${deg} — equal in all random positions`)),
+      el('button', { class: 'btn small', title: 'Draw these angles with matching marks', onclick: () => markAngles(g, gi) }, 'Mark')));
+  });
+  box.append(list);
+  box.append(el('p', { class: 'relhint' }, `Checked on 12 random positions (${ms} ms). Click the canvas to search again.`));
+  box.hidden = false;
 }
 
 function showRelations() {
   const box = $('#rel');
+  if (S.tool === 'anglechase') { showAngleChase(); return; }
   if (S.tool !== 'relation') { box.hidden = true; return; }
   box.textContent = '';
   const names = S.tsel.filter(n => cons.has(n));
@@ -1348,7 +1465,8 @@ function showRelations() {
     box.hidden = false; return;
   }
   const rs = relations(names.map(n => cons.get(n)));
-  const shown = rs.filter((r, i) => r.holds || i === 0);
+  // What holds first; the main question (e.g. collinear?) last if it fails.
+  const shown = [...rs.filter(r => r.holds), ...rs.slice(0, 1).filter(r => !r.holds)];
   const counts = generality(names, shown.map(r => r.test));
   const list = el('ul', { class: 'rels' });
   shown.forEach((r, i) => {
@@ -1429,6 +1547,36 @@ function showExport(fmt) {
   dlg.showModal();
 }
 
+// ---------- theorem demos ----------
+
+function loadDemo(i) {
+  const d = DEMOS[i];
+  if (cons.objs.length && !confirm(`Replace the current construction with the ${d.title} demo? (Undo brings it back.)`)) return;
+  cons.load([]);
+  S.selection.clear();
+  setTool('move');
+  try {
+    for (const line of d.lines) cons.exec(line, defaultStyle);
+    for (const [n, st] of Object.entries(d.style || {})) if (cons.has(n)) Object.assign(cons.get(n).style, st);
+  } catch (e) { toast(`Demo failed: ${e.message}`, 'error'); }
+  S.settings.grid = S.settings.axes = false; saveSettings();
+  commit();
+  fitAll();
+  showInfo(d);
+}
+function showInfo(d) {
+  const box = $('#info');
+  box.textContent = '';
+  const acts = el('div', { class: 'acts' });
+  if (d.check) acts.append(el('button', { class: 'btn primary small', onclick: () => {
+    setTool('relation'); S.tsel = d.check.filter(n => cons.has(n)); showRelations(); render();
+  } }, `Check ${d.check.join(', ')}`));
+  if (d.chase) acts.append(el('button', { class: 'btn primary small', onclick: () => setTool('anglechase') }, 'Find equal angles'));
+  acts.append(el('button', { class: 'btn small', onclick: () => { box.hidden = true; } }, 'Close'));
+  box.append(el('b', {}, d.title), el('p', {}, d.caption), acts);
+  box.hidden = false;
+}
+
 // ---------- templates ----------
 
 const TEMPLATES = {
@@ -1467,6 +1615,15 @@ function showHelp() {
       ' · equations ', el('code', {}, 'x^2 + y^2 = 9'), ', ', el('code', {}, 'y = 2x + 1'), ', ', el('code', {}, 'x^3 = y^2 - x'),
       ' · sliders ', el('code', {}, 'a = 1'), ', ', el('code', {}, 'α = 30°'), ' · arithmetic ', el('code', {}, 'B = A + (2, 0)'), ', ', el('code', {}, 'x(A) + y(B)'),
       ' · text ', el('code', {}, 'Text("Area: " + Area(poly1), (1, 1))'), '. Redefine by assigning to an existing name. Implicit multiplication works: ', el('code', {}, '2x y'), '.'),
+    el('h2', {}, 'Olympiad geometry'),
+    el('ul', { class: 'guide' },
+      el('li', {}, el('b', {}, 'Check relation (Q): '), 'click 2–4 objects. You get collinear / concyclic / concurrent / tangent / equal… and whether it holds ', el('i', {}, 'always'), ' (tested on 40 random positions) or only in this picture.'),
+      el('li', {}, el('b', {}, 'Find equal angles (U): '), 'lists every class of equal angles between drawn segments and lines through named points. Press Mark to draw them with matching arcs.'),
+      el('li', {}, el('b', {}, 'Olympiad tools: '), 'triangle centres (incentre … X(40)), feet of perpendiculars, excircles, the nine-point circle, the Euler line, arc midpoints, antipodes, radical axes, common tangents, isogonal conjugates, spiral centres and harmonic conjugates.'),
+      el('li', {}, el('b', {}, 'Menu → Theorem demos: '), 'Euler line, nine-point circle, Simson, butterfly, Miquel, the incentre–excentre lemma, Pascal, Ptolemy, radical centre and inscribed angles, each with a Check button.'),
+      el('li', {}, el('b', {}, 'Menu → Export Asymptote / TikZ: '), 'the visible diagram as code for your write-up. Marks: select a segment or angle and pick ticks or arcs in its properties.'),
+      el('li', {}, el('b', {}, 'Menu → Step through construction'), ' replays a figure one object at a time; ', el('b', {}, 'New from template'), ' starts a triangle, a cyclic quadrilateral and more.'),
+      el('li', {}, el('b', {}, 'Input bar: '), el('code', {}, 'Orthocenter(A, B, C)'), ', ', el('code', {}, 'SecondIntersection(Line(A, P), ω, A)'), ', ', el('code', {}, 'AreConcyclic(A, B, C, D)'), ', ', el('code', {}, 'Reflect(s, ω)'), ' (inversion). Names like ', el('code', {}, 'I_A'), ' get subscripts.')),
     el('h2', {}, 'Commands'),
     el('ul', { class: 'cmds' }, ...cmds)));
   h.hidden = false;
@@ -1586,4 +1743,4 @@ async function start() {
 start();
 
 // Exposed for the browser smoke test and for power users in the console.
-window.gd = { applyTemplate, exportDiagram: f => exportDiagram(cons, R, f), enterSteps, goStep, exitSteps, cons, view, S, exec: src => { const o = cons.exec(src, defaultStyle); commit(); return o; }, setTool, undo, redo, render, R, docJSON, encodeDoc, decodeDoc };
+window.gd = { loadDemo, applyTemplate, exportDiagram: f => exportDiagram(cons, R, f), enterSteps, goStep, exitSteps, cons, view, S, exec: src => { const o = cons.exec(src, defaultStyle); commit(); return o; }, setTool, undo, redo, render, R, docJSON, encodeDoc, decodeDoc };

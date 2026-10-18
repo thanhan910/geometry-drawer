@@ -905,22 +905,53 @@ export function transform(v, M) {
   return UNDEF;
 }
 
-function invert(v, circ) {
+// Inversion in a circle. Lines and circles map exactly to lines or circles,
+// segments, rays and arcs to exact arcs (or segments through the centre);
+// anything else on a path is sampled and returned as a locus.
+function invert(v, circ, bounds = DEFAULT_BOUNDS) {
   const { c, r } = circ;
   const ip = p => { const d = sub(p, c), l2 = dot(d, d); return l2 < 1e-300 ? P(NaN, NaN) : add(c, mul(d, r * r / l2)); };
-  if (v.t === 'pt') return toPt(ip(v));
-  if (v.t === 'pts') return { t: 'pts', pts: v.pts.map(ip) };
-  // Lines and circles map to lines or circles: invert three points.
-  let ps;
-  if (v.t === 'line') ps = [0.37, 1.91, -2.3].map(t => add(v.p, mul(v.d, t)));
-  else if (v.t === 'circle') ps = [0.1, 0.43, 0.77].map(t => add(v.c, mul(P(cos(TAU * t), sin(TAU * t)), v.r)));
-  else return UNDEF;
-  const q = ps.map(ip);
-  if (!q.every(finite)) {
-    const good = q.filter(finite);
-    return good.length >= 2 ? { t: 'line', p: good[0], d: sub(good[1], good[0]) } : UNDEF;
+  const threePoint = (q, mk) => {
+    if (!q.every(finite)) return null;
+    const k = circle3(q[0], q[1], q[2]);
+    return k ? mk(k) : null;
+  };
+  switch (v.t) {
+    case 'pt': return toPt(ip(v));
+    case 'pts': return { t: 'pts', pts: v.pts.map(ip) };
+    case 'line': case 'circle': {
+      const ps = v.t === 'line' ? [0.37, 1.91, -2.3].map(t => add(v.p, mul(v.d, t)))
+        : [0.1, 0.43, 0.77].map(t => add(v.c, mul(P(cos(TAU * t), sin(TAU * t)), v.r)));
+      const q = ps.map(ip);
+      if (!q.every(finite)) {
+        const good = q.filter(finite);
+        return good.length >= 2 ? { t: 'line', p: good[0], d: sub(good[1], good[0]) } : UNDEF;
+      }
+      return circle3(q[0], q[1], q[2]) || { t: 'line', p: q[0], d: sub(q[1], q[0]) };
+    }
+    case 'seg': case 'ray': case 'arc': {
+      // start, middle, end of the image; a ray's far end maps to the centre
+      const ends = v.t === 'arc' ? [arcEnd(v, 0), arcEnd(v, 0.5), arcEnd(v, 1)].map(ip)
+        : v.t === 'seg' ? [v.p, add(v.p, mul(v.d, 0.5)), add(v.p, v.d)].map(ip)
+          : [ip(v.p), ip(add(v.p, v.d)), P(c.x, c.y)];
+      const a = threePoint(ends, () => arc3(ends.map(q => ({ t: 'pt', x: q.x, y: q.y })), false));
+      if (a && a.t === 'arc') return a;
+      break; // through the centre: fall back to sampling
+    }
   }
-  return circle3(q[0], q[1], q[2]) || { t: 'line', p: q[0], d: sub(q[1], q[0]) };
+  if (!isPath(v)) return UNDEF;
+  const pi = pathInfo(v, bounds);
+  if (!pi || !pi.at) return UNDEF;
+  const N = 800, out = [];
+  let prev = null;
+  const diag = hypot(bounds.xmax - bounds.xmin, bounds.ymax - bounds.ymin);
+  for (let i = 0; i <= N; i++) {
+    const q = ip(pi.at(pi.t0 + (pi.t1 - pi.t0) * i / N));
+    if (!finite(q)) { if (prev) out.push(null); prev = null; continue; }
+    if (prev && dist(prev, q) > diag * 0.3) out.push(null);
+    out.push(q); prev = q;
+  }
+  return { t: 'locus', pts: out };
 }
 
 function circle3(a, b, c) {
@@ -1356,11 +1387,11 @@ def('Dot', 'Dot(u, v)', a => (a.length === 2 && a.every(v => v.t === 'vec' || v.
 def('Cross', 'Cross(u, v)', a => (a.length === 2 && a.every(v => v.t === 'vec' || v.t === 'pt') ? num(crs(a[0], a[1])) : null));
 
 function needsObj(v) { return v.t !== 'num' && v.t !== 'str' && v.t !== 'bool'; }
-def('Reflect Mirror', 'Reflect(object, line|point|circle)', a => {
+def('Reflect Mirror Invert', 'Reflect(object, line|point|circle) — a circle means inversion', (a, ctx) => {
   if (a.length !== 2 || !needsObj(a[0])) return null;
   if (isLinear(a[1]) && a[1].t !== 'vec') return transform(a[0], mReflectLine(a[1]));
   if (a[1].t === 'pt') return transform(a[0], mDilate(-1, a[1]));
-  if (a[1].t === 'circle') return invert(a[0], a[1]);
+  if (a[1].t === 'circle') return invert(a[0], a[1], ctx.bounds);
   return null;
 });
 def('Rotate', 'Rotate(object, angle), Rotate(object, angle, point)', a => {

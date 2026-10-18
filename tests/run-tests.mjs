@@ -4,6 +4,7 @@ import { parseStatement, parseExpr, print } from '../js/expr.js';
 import { describe as desc, intersections, conicInfo } from '../js/geom.js';
 import { Construction } from '../js/construction.js';
 import { relations } from '../js/olympiad.js';
+import { DEMOS } from '../js/demos.js';
 
 let pass = 0, fail = 0;
 const near = (a, b, e = 1e-6) => Math.abs(a - b) <= e * (1 + Math.abs(b));
@@ -291,6 +292,27 @@ t('relation finder: incentre–excentre lemma MB = MI holds always', () => {
   const c = cons([...T, 'M = ArcMidpoint(A, B, C)', 'I = Incenter(A, B, C)']);
   const r = relations(['M', 'B', 'I'].map(n => c.get(n)));
   ok(r.some(x => x.holds && x.text === 'MB = MI'), JSON.stringify(r.map(x => [x.text, x.holds])));
+});
+t('inversion maps a segment to an arc and preserves the circle', () => {
+  const c = cons(['k = Circle((0, 0), 2)', 's = Segment((1, 1), (3, 1))', 'i = Reflect(s, k)', 'g = Reflect(Polygon((1, 1), (3, 1), (2, 3)), k)', 'r = Reflect(Ray((1, -1), (2, -1)), k)']);
+  eq(val(c, 'i').t, 'arc'); eq(val(c, 'g').t, 'locus'); eq(val(c, 'r').t, 'arc');
+  const e = val(c, 'i'), end = { x: e.c.x + e.r * Math.cos(e.a0), y: e.c.y + e.r * Math.sin(e.a0) };
+  const inv = p => { const l = p.x * p.x + p.y * p.y; return { x: 4 * p.x / l, y: 4 * p.y / l }; };
+  const a = inv({ x: 1, y: 1 }), b = inv({ x: 3, y: 1 });
+  ok(Math.min(d2(end, a), d2(end, b)) < 1e-9);
+});
+t('second intersection of a line through a point on a circle', () => {
+  const c = cons(['k = Circle((0, 0), 5)', 'A = (3, 4)', 'B = SecondIntersection(Line(A, (0, 0)), k, A)']);
+  ok(near(val(c, 'B').x, -3) && near(val(c, 'B').y, -4));
+});
+for (const d of DEMOS) t(`demo: ${d.title}`, () => {
+  const c = cons(d.lines);
+  for (const o of c.objs) ok(o.val.t !== 'undef', `${o.name} undefined`);
+  if (d.check) {
+    const r = relations(d.check.map(n => c.get(n)));
+    ok(r.some(x => x.holds), `no relation holds: ${JSON.stringify(r.map(x => [x.text, x.holds]))}`);
+  }
+  for (const o of c.objs) if (o.val.t === 'pt') ok(Math.hypot(o.val.x, o.val.y) < 25, `${o.name} far away`);
 });
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

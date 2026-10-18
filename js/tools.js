@@ -81,6 +81,7 @@ const ICON = {
   arcmid: svg('<circle cx="12" cy="10" r="7.5" class="s"/>' + ln('M5 13h14') + dot(12, 17.5, 3) + dot(5, 13) + dot(19, 13)),
   antipode: svg('<circle cx="12" cy="12" r="8" class="s"/>' + dash('M6.3 6.3l11.4 11.4') + dot(6.3, 6.3) + dot(17.7, 17.7) + dot(12, 12, 1.5)),
   relation: svg(ln('M4 7h7M4 12h7') + ln('M14 12l3 3 5-7') + txt(4, 21, '≟', 9)),
+  anglechase: svg(ln('M3 20h18M3 20L13 4M21 20L13 4') + ln('M8 20a5 5 0 0 0-1.6-3.8M17.4 20a4 4 0 0 0-.9-2.4M13.5 8.5a4 4 0 0 1-1.7 0') + ln('M7 15.5a7 7 0 0 1 1.6 4.5')),
   marks: svg(ln('M3 18L21 6M10 10l2 3M12.5 8.5l2 3')),
   zoomin: svg('<circle cx="10" cy="10" r="6.5" class="s"/>' + ln('M15 15l6 6M7 10h6M10 7v6')),
   zoomout: svg('<circle cx="10" cy="10" r="6.5" class="s"/>' + ln('M15 15l6 6M7 10h6')),
@@ -141,6 +142,7 @@ export const TOOLS = [
   { id: 'isogonal', group: 'olympiad', name: 'Isogonal Conjugate', help: 'Select the point, then the three vertices', patterns: [['pt', 'pt', 'pt', 'pt']], make: one('pt', s => `IsogonalConjugate(${s.join(', ')})`), preview: true },
   { id: 'spiral', group: 'olympiad', name: 'Spiral Similarity Centre', help: 'Select A, B, then their images C, D', patterns: [['pt', 'pt', 'pt', 'pt']], make: one('pt', s => `SpiralCenter(${s.join(', ')})`), preview: true },
   { id: 'harmonic', group: 'olympiad', name: 'Harmonic Conjugate', help: 'Select A, B, then C: D on AB with (A, B; C, D) = −1', patterns: PT3, make: one('pt', s => `HarmonicConjugate(${s.join(', ')})`), preview: true },
+  { id: 'anglechase', group: 'olympiad', name: 'Find Equal Angles', key: 'u', help: 'Lists every class of equal angles between drawn lines (checked on random positions). Click the canvas to search again', special: 'anglechase' },
   { id: 'relation', group: 'olympiad', name: 'Check Relation', key: 'q', help: 'Select 2–4 objects: collinear, concyclic, concurrent, tangent, equal… and whether it always holds', special: 'relation' },
 
   { id: 'polygon', group: 'polygons', name: 'Polygon', key: 'g', help: 'Select vertices; click the first one again to close', special: 'polygon' },
@@ -177,7 +179,7 @@ export const TOOLS = [
 
   { id: 'reflectline', group: 'transform', name: 'Reflect about Line', key: 'f', help: 'Select the object, then the mirror line', patterns: [['obj', 'lin']], make: 'transform', fmt: s => `Reflect(${s[0]}, ${s[1]})` },
   { id: 'reflectpoint', group: 'transform', name: 'Reflect about Point', help: 'Select the object, then the center', patterns: [['obj', 'pt']], make: 'transform', fmt: s => `Reflect(${s[0]}, ${s[1]})` },
-  { id: 'inversion', group: 'transform', name: 'Reflect about Circle', help: 'Select a point, line or circle, then the circle of inversion', patterns: [['obj', 'circ']], make: 'transform', fmt: s => `Reflect(${s[0]}, ${s[1]})` },
+  { id: 'inversion', group: 'transform', name: 'Reflect about Circle (Inversion)', help: 'Select any object, then the circle of inversion', patterns: [['obj', 'circ']], make: 'transform', fmt: s => `Reflect(${s[0]}, ${s[1]})` },
   { id: 'rotate', group: 'transform', name: 'Rotate around Point', key: 'o', help: 'Select the object, then the center, then enter the angle', patterns: [['obj', 'pt']],
     prompt: { label: 'Angle (degrees, counter-clockwise)', def: '90°' }, make: 'transform', fmt: (s, x) => `Rotate(${s[0]}, ${x}, ${s[1]})` },
   { id: 'translate', group: 'transform', name: 'Translate by Vector', help: 'Select the object, then the vector', patterns: [['obj', 'vec']], make: 'transform', fmt: s => `Translate(${s[0]}, ${s[1]})` },

@@ -7,8 +7,8 @@ to `server-g5-setup-01`; do not restate it here.
 ## Current position
 
 Deployed at `/geometry/`, **public** since 2026-10-18 (operator decision),
-from `/var/www/geometry`. 69 engine tests and the headless browser smoke test
-pass. The Asymptote and TikZ exports were compiled with real `asy` and
+from `/var/www/geometry`. 81 engine tests (including one per theorem demo) and the headless browser
+smoke test pass. The Asymptote and TikZ exports were compiled with real `asy` and
 `pdflatex` in a throwaway Debian container (2026-10-18). Neither tool is
 installed on the host. Pushed to GitHub (`origin/main`).
 
@@ -28,9 +28,14 @@ The modules load in dependency order:
    `js/olympiad.js` registers the olympiad commands into the same table:
    triangle centres from Kimberling barycentrics, conjugates, radical axes,
    spiral similarity, and harmonic division. It also holds `relations()`, the
-   relation finder used by the Check-relation tool. The tool's "always / only
-   here" verdict comes from `generality()` in `app.js`, which jitters the free
-   points 40 times and restores them.
+   relation finder used by the Check-relation tool. In `app.js`,
+   `perturbRuns()` jitters every free point and sliding point, then restores
+   them. Two features build on it: `generality()` gives the "always / only
+   here" verdict (40 runs), and `findEqualAngles()` does the angle chasing
+   (12 runs, angles grouped by their values across the runs).
+   `js/demos.js` is data: the theorem demos as input-bar lines, styles and
+   the objects to check. The engine tests build every demo and assert that
+   its theorem holds.
 4. `js/render.js` draws to a Canvas 2D context. Each draw caches screen
    geometry in `o._g`, and hit testing reads that cache.
    `js/export.js` builds Asymptote and TikZ output from that cached geometry,

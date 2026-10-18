@@ -48,6 +48,16 @@ visitor's browser, and nothing is stored on the server.
   simple ratios such as α = 2β. It then moves every free point through 40
   random nearby positions and tells you whether each fact holds **always**
   (likely a theorem) or **only in this picture** (a coincidence).
+- **Find equal angles (`U`):** lists every class of equal angles formed at
+  named points by the drawn segments and lines, keeping only those that stay
+  equal in 12 random positions. For a cyclic quadrilateral it finds
+  ∠BAC = ∠BDC and the rest. **Mark** draws a class with matching arcs and a
+  shared colour.
+- **Theorem demos** (*Menu*): Euler line, nine-point circle and Feuerbach,
+  Simson line, butterfly theorem, Miquel's theorem, the incentre–excentre
+  lemma, Pascal, Ptolemy, radical centre, and inscribed angles. Each is a
+  live construction with a short explanation and a button that runs the
+  relation check (or the angle finder) on the theorem's key objects.
 - **Triangle centres:** Kimberling X(1)–X(11), X(13), X(14), X(20), X(40),
   plus excentres, excircles, the nine-point circle, the Euler line, altitudes,
   medians, symmedians, and the medial, orthic, intouch, pedal and cevian
@@ -56,8 +66,10 @@ visitor's browser, and nothing is stored on the server.
   isotomic conjugates, arc midpoints, antipodes, power of a point, radical
   axis and radical centre, homothety centres, all four common tangents,
   the spiral-similarity centre, the Miquel point, harmonic conjugates, cross
-  ratio, pole and polar, and points from barycentric or trilinear
-  coordinates.
+  ratio, pole and polar, `SecondIntersection(a, b, P)`, and points from
+  barycentric or trilinear coordinates. Inversion (*Reflect about circle*)
+  maps lines and circles exactly, segments, rays and arcs to exact arcs, and
+  anything else (polygons, conics, graphs) as a sampled curve.
 - **True/false commands for the input bar:** `AreCollinear`, `AreConcyclic`,
   `AreConcurrent`, `AreParallel`, `ArePerpendicular`, `AreEqual`,
   `AreTangent`, `IsOn`.
@@ -85,7 +97,7 @@ Press `?` in the app for every shortcut and command.
 | `H` / `J` | Perpendicular / parallel | `F` / `O` | Reflect / rotate |
 | `B` | Perpendicular bisector | `N` / `T` | Slider / text |
 | `G` | Polygon | `X` | Delete |
-| `Q` | Check relation | | |
+| `Q` | Check relation | `U` | Find equal angles |
 
 ## Commands
 

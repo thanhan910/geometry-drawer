@@ -5,7 +5,7 @@
 
 import {
   def, sig, is, lin, lineV, anchor, toPt, ll, cc, lineFromCoef, tangentsConic, conicMatrix, circle3,
-  polygonArea, num, pt, UNDEF, V, P, conicInfo, closest, isLinear, isPath,
+  polygonArea, num, pt, UNDEF, V, P, conicInfo, closest, isLinear, isPath, intersections,
 } from './geom.js';
 
 const { abs, sqrt, hypot, min, max, PI, cos, sin, atan2 } = Math;
@@ -161,6 +161,13 @@ def('Trilinear', 'Trilinear(A, B, C, x, y, z)', a => {
   if (!sig(a, 'pt', 'pt', 'pt', 'num', 'num', 'num')) return null;
   const { a: x, b: y, c: z } = sides(a[0], a[1], a[2]);
   return ptOrU(bary(a[0], a[1], a[2], x * a[3].v, y * a[4].v, z * a[5].v));
+});
+
+def('SecondIntersection OtherIntersection', 'SecondIntersection(a, b, P) — the intersection of a and b that is not P', (a, ctx) => {
+  if (a.length !== 3 || a[2].t !== 'pt' || a[0].t === 'pt' || a[1].t === 'pt') return null;
+  const ps = intersections(a[0], a[1], ctx.bounds);
+  if (!ps.length) return UNDEF;
+  return toPt(ps.reduce((b, p) => (dist(p, a[2]) > dist(b, a[2]) ? p : b)));
 });
 
 // ---------- circles ----------

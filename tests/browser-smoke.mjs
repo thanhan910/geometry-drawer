@@ -269,6 +269,25 @@ try {
   check(/unitsize/.test(asy) && /dot\("\$A\$"/.test(asy) && /draw\(circle/.test(asy), 'Asymptote export has points, labels and circles');
   check(/\\begin\{tikzpicture\}/.test(tikz) && /circle \(/.test(tikz) && /\\end\{tikzpicture\}/.test(tikz), 'TikZ export is a complete picture');
   if (process.env.EXPORT_DIR) { await writeFile(join(process.env.EXPORT_DIR, 'diagram.asy'), asy); await writeFile(join(process.env.EXPORT_DIR, 'diagram.tikz'), tikz); }
+  // --- theorem demos, angle chasing, inversion --------------------------------
+  const ndemos = await ev("(async () => (await import('./js/demos.js')).DEMOS.length)()");
+  for (let i = 0; i < ndemos; i++) {
+    await ev(`gd.loadDemo(${i}); true`);
+    const st = await ev("(() => { const b = document.querySelector('#info .btn.primary'); if (b) b.click(); return [document.querySelector('#info b').textContent, gd.S.tool, [...document.querySelectorAll('#rel li')].map(l => l.className).join(',')]; })()");
+    if (st[1] === 'relation') check(st[2].startsWith('yes'), `demo "${st[0]}": Check confirms the theorem always holds (${st[2]})`);
+    else check(st[1] === 'anglechase' && /yes/.test(st[2]), `demo "${st[0]}": Find equal angles lists classes`);
+  }
+  const chase = await ev("[...document.querySelectorAll('#rel li')].map(l => l.querySelector('.grow div').textContent)");
+  check(chase.some(t => t.includes('∠BAC') && t.includes('∠BDC')), `angle chase finds ∠BAC = ∠BDC (${chase.slice(0, 3).join(' | ')})`);
+  const n1 = await count();
+  await ev("document.querySelector('#rel li .btn').click(); true");
+  check(await count() > n1 && await ev("gd.cons.objs.at(-1).style.arcs >= 1"), 'Mark draws the class with matching arcs');
+  await key('Escape', 'Escape');
+  await ev("gd.exec('ι = Circle((0, 0), 2)'); gd.exec('sg = Segment((1, 1), (3, 1))'); true");
+  await ev("gd.setTool('inversion'); true");
+  await click(2, 1); const kk2 = await ev("[gd.view.sx(2) , 0]"); await click(0, 2);
+  check(await ev("gd.cons.objs.at(-1).val.t") === 'arc', 'inversion tool maps a segment to an arc');
+  await key('Escape', 'Escape');
   // --- phone layout -------------------------------------------------------
   await client.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 800, deviceScaleFactor: 2, mobile: true });
   await delay(250);
