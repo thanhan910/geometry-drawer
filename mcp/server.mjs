@@ -17,17 +17,28 @@ const PORT = +(process.env.PORT || 5040);
 const HOST = process.env.HOST || '127.0.0.1';
 const MAX_BODY = 256 * 1024;
 
-// The in-chat viewer (MCP Apps): js/widget.js and the engine bundled into one
-// self-contained HTML page at startup, so it always matches the engine.
-const VIEWER_URI = 'ui://geometry-drawer/viewer.html';
-const VIEWER_MIME = 'text/html;profile=mcp-app';
-const VIEWER_HTML = (() => {
-  const js = buildSync({ entryPoints: [new URL('../js/widget.js', import.meta.url).pathname], bundle: true, write: false, format: 'iife', minify: true, target: 'es2020' })
+// The in-chat editor: the full Geometry Drawer page (index.html, its CSS and
+// js/app.js with the whole engine bundled by esbuild) inlined into one HTML
+// document at startup, with window.GD_EMBED switching the app to embed mode.
+const ROOT = new URL('../', import.meta.url);
+const EDITOR_URI = 'ui://geometry-drawer/editor.html';            // MCP Apps (Claude, ChatGPT, …)
+const SKYBRIDGE_URI = 'ui://geometry-drawer/editor-skybridge.html'; // ChatGPT Apps SDK (older)
+const EDITOR_MIME = 'text/html;profile=mcp-app';
+const EDITOR_HTML = (() => {
+  const js = buildSync({ entryPoints: [new URL('js/app.js', ROOT).pathname], bundle: true, write: false, format: 'iife', minify: true, target: 'es2020' })
     .outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
-  return readFileSync(new URL('./widget.html', import.meta.url), 'utf8').replace('/*BUNDLE*/', () => js);
+  const css = readFileSync(new URL('css/app.css', ROOT), 'utf8');
+  let html = readFileSync(new URL('index.html', ROOT), 'utf8');
+  const before = html;
+  html = html.replace('<link rel="stylesheet" href="css/app.css">', () => `<style>${css}</style>`)
+    .replace('<script type="module" src="js/app.js"></script>', () => `<script>window.GD_EMBED = ${JSON.stringify({ appUrl: APP_URL })};</script>\n<script>${js}</script>`);
+  if (html === before || html.includes('src="js/app.js"') || html.includes('href="css/app.css"')) throw new Error('index.html changed: cannot inline the editor');
+  return html;
 })();
-// No network, no external files: everything the viewer needs is inline.
-const VIEWER_META = { ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } } };
+// No network, no external files: everything the editor needs is inline.
+const EDITOR_META = { ui: { prefersBorder: true, csp: { connectDomains: [], resourceDomains: [] } } };
+const SKYBRIDGE_META = { 'openai/widgetPrefersBorder': true, 'openai/widgetCSP': { connect_domains: [], resource_domains: [] },
+  'openai/widgetDescription': 'An interactive Geometry Drawer editor showing the figure. The user can drag points and add objects; their current figure is shared back with you.' };
 
 const INSTRUCTIONS = `Geometry Drawer draws dynamic geometry (constructions, triangle centres, circles, conics, function graphs, transformations) from a short script.
 Workflow: call geometry_language once to learn the syntax, write a script, call draw_geometry, look at the returned image, fix any reported errors or wrong-looking parts, and then give the user the link, which opens the figure in an interactive app where they can drag points.
@@ -36,12 +47,17 @@ Use draw_geometry's verify list (e.g. "AreConcyclic(A, B, C, D)") to test a conj
 function buildServer() {
   const server = new McpServer({ name: 'geometry-drawer', title: 'Geometry Drawer', version: '1.0.0' }, { instructions: INSTRUCTIONS });
 
-  server.registerResource('geometry-viewer', VIEWER_URI, {
-    title: 'Geometry Drawer viewer',
-    description: 'Interactive, draggable view of a figure drawn by draw_geometry.',
-    mimeType: VIEWER_MIME,
-    _meta: VIEWER_META,
-  }, async () => ({ contents: [{ uri: VIEWER_URI, mimeType: VIEWER_MIME, text: VIEWER_HTML, _meta: VIEWER_META }] }));
+  server.registerResource('geometry-editor', EDITOR_URI, {
+    title: 'Geometry Drawer editor',
+    description: 'The interactive Geometry Drawer editor, showing a figure drawn by draw_geometry.',
+    mimeType: EDITOR_MIME,
+    _meta: EDITOR_META,
+  }, async () => ({ contents: [{ uri: EDITOR_URI, mimeType: EDITOR_MIME, text: EDITOR_HTML, _meta: EDITOR_META }] }));
+  server.registerResource('geometry-editor-chatgpt', SKYBRIDGE_URI, {
+    title: 'Geometry Drawer editor (ChatGPT Apps SDK)',
+    mimeType: 'text/html+skybridge',
+    _meta: SKYBRIDGE_META,
+  }, async () => ({ contents: [{ uri: SKYBRIDGE_URI, mimeType: 'text/html+skybridge', text: EDITOR_HTML, _meta: SKYBRIDGE_META }] }));
 
   server.registerTool('geometry_language', {
     title: 'Geometry Drawer language reference',
@@ -53,7 +69,7 @@ function buildServer() {
   server.registerTool('draw_geometry', {
     title: 'Draw a geometry construction',
     description: 'Build a figure from a script in the Geometry Drawer language (one statement per line, e.g. "A = (0, 0)", "k = Circumcircle(A, B, C)", "SetColor(k, \\"red\\")"). '
-      + 'In chats that support MCP Apps the user sees the figure as an interactive widget they can drag; otherwise share the link. Returns an image of the figure, a link that opens it in the interactive app (always give the user this link), every object\'s value, errors by line number, '
+      + 'In chats that support MCP Apps the user gets the full Geometry Drawer editor inline: they can drag points and add their own objects, and their current figure comes back to you as context (build on it by passing that script plus your additions). Otherwise share the link. Returns an image of the figure, a link that opens it in the interactive app (always give the user this link), every object\'s value, errors by line number, '
       + 'and true/false checks re-tested on random positions of the free points. Call geometry_language first if you do not know the syntax.',
     inputSchema: {
       script: z.string().max(LIMITS.scriptChars).describe('The construction, one statement per line. # starts a comment.'),
@@ -67,7 +83,8 @@ function buildServer() {
     annotations: { readOnlyHint: true, openWorldHint: false },
     // MCP Apps: hosts that support it show the figure as a live, draggable
     // widget in the chat (both key forms, as the spec asks for compatibility).
-    _meta: { ui: { resourceUri: VIEWER_URI }, 'ui/resourceUri': VIEWER_URI,
+    _meta: { ui: { resourceUri: EDITOR_URI }, 'ui/resourceUri': EDITOR_URI,
+      'openai/outputTemplate': SKYBRIDGE_URI, ...SKYBRIDGE_META,
       'openai/toolInvocation/invoking': 'Drawing the figure…', 'openai/toolInvocation/invoked': 'Figure ready' },
   }, async ({ script, title, caption, verify, show_axes, show_grid, image }) => {
     try {

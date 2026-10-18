@@ -11,6 +11,7 @@ import { DEMOS } from './demos.js';
 import { runScript, toScript, STATEMENTS } from './script.js';
 import { languageGuide } from './guide.js';
 import { renderSVG } from './svgctx.js';
+import { connectHost } from './hostbridge.js';
 import { exportDiagram } from './export.js';
 
 const $ = s => document.querySelector(s);
@@ -25,10 +26,16 @@ const el = (tag, attrs = {}, ...kids) => {
   for (const k of kids.flat()) if (k != null) e.append(k);
   return e;
 };
-const store = {
+// Embedded in an AI chat (MCP Apps / ChatGPT): the MCP server sets
+// window.GD_EMBED. The figure then comes from the host, not from storage.
+const EMBED = window.GD_EMBED || null;
+const memory = new Map();
+const store = EMBED ? { get: k => memory.get(k) ?? null, set: (k, v) => memory.set(k, v) } : {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
+// Sandboxed chat frames block confirm(); undo is the safety net there.
+const okToReplace = msg => (EMBED ? true : confirm(msg));
 
 const FN_COLORS = ['#2457d6', '#c0392b', '#138d75', '#8e44ad', '#d35400', '#2c3e50'];
 const SWATCHES = [null, '#2457d6', '#c0392b', '#138d75', '#8e44ad', '#d35400', '#a0522d', '#b8860b', '#2b2b2b', '#7f8c8d', '#e84393', '#00a8c6'];
@@ -40,7 +47,7 @@ const view = R.view;
 
 const S = {
   tool: 'move', tsel: [], selection: new Set(), hover: null, preview: null, rubber: null,
-  settings: Object.assign({ grid: true, axes: true, snap: true, digits: 2, theme: 'auto', labeling: 'auto', showAux: false, algebra: true },
+  settings: Object.assign({ grid: true, axes: true, snap: true, digits: 2, theme: 'auto', labeling: 'auto', showAux: false, algebra: !EMBED },
     store.get('gd:settings') || {}),
   history: [], hidx: -1, groupTool: {}, fnColor: 0, inputHist: [], inputIdx: -1,
 };
@@ -86,6 +93,7 @@ function commit() {
   const s = snapshot();
   if (S.history[S.hidx] !== s) {
     if (S.step != null && S.history[S.hidx] !== undefined) exitSteps();
+    if (EMBED && S.hidx >= 0) syncHostSoon();
     S.history = S.history.slice(0, S.hidx + 1);
     S.history.push(s);
     if (S.history.length > 400) S.history.shift();
@@ -940,8 +948,9 @@ function redefineFromText(o, src) {
 // ---------- input bar ----------
 
 const input = $('#input');
-$('#inputForm').addEventListener('submit', ev => {
-  ev.preventDefault();
+// Chat frames may block form submission, so Enter is handled directly too.
+$('#inputForm').addEventListener('submit', ev => { ev.preventDefault(); submitInput(); });
+function submitInput() {
   const src = input.value.trim();
   if (!src) return;
   if (suggest.items.length && !suggest.box.hidden) return applySuggest();
@@ -968,9 +977,10 @@ $('#inputForm').addEventListener('submit', ev => {
   } catch (e) {
     $('#inputErr').textContent = e.message;
   }
-});
+}
 input.addEventListener('keydown', ev => {
   ev.stopPropagation();
+  if (ev.key === 'Enter' && !ev.isComposing) { ev.preventDefault(); submitInput(); return; }
   if (!suggest.box.hidden && suggest.items.length) {
     if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
       ev.preventDefault();
@@ -1168,7 +1178,7 @@ function ask(title, fields) {
       else if (f.type === 'textarea') inp = el('textarea', { rows: 3, spellcheck: 'false' }, f.value || '');
       else inp = el('input', { value: f.value ?? '', spellcheck: 'false', autocomplete: 'off' });
       inputs[f.key] = inp;
-      inp.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Enter' && f.type === 'textarea' && !ev.shiftKey) { ev.preventDefault(); ok(); } });
+      inp.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Enter' && !ev.shiftKey && f.type !== 'select') { ev.preventDefault(); ok(); } });
       form.append(f.type === 'checkbox' ? el('label', { class: 'cb' }, inp, f.label) : el('label', { class: 'fl' }, el('span', {}, f.label), inp));
     }
     const ok = () => {
@@ -1178,7 +1188,7 @@ function ask(title, fields) {
     };
     form.append(el('div', { class: 'acts' },
       el('button', { type: 'button', class: 'btn', onclick: () => { dlg.close(); resolve(null); } }, 'Cancel'),
-      el('button', { type: 'submit', class: 'btn primary' }, 'OK')));
+      el('button', { type: 'button', class: 'btn primary', onclick: () => ok() }, 'OK')));
     form.addEventListener('submit', ev => { ev.preventDefault(); ok(); });
     dlg.append(form);
     dlg.onclose = () => resolve(null);
@@ -1209,12 +1219,18 @@ function openMenu() {
     el('select', { onchange: ev => { const v = ev.target.value; if (k === '__template') { closeMenu(); if (v) applyTemplate(v); return; } if (k === '__demo') { closeMenu(); if (v) loadDemo(+v); return; } S.settings[k] = /^\d+$/.test(v) ? +v : v; saveSettings(); if (k === 'theme') applyTheme(); refreshAlgebra(); viewChanged(); } },
       ...opts.map(([v, l]) => el('option', { value: v, selected: String(S.settings[k]) === String(v) }, l)))));
   item('New', newDoc);
-  item('Open file…', () => $('#file').click(), 'Ctrl+O');
-  item('Save file', saveFile, 'Ctrl+S');
-  item('Export PNG', exportPng);
-  item('Export SVG', exportSvg);
-  item('Export Asymptote / TikZ…', () => showExport('asy'));
-  item('Copy share link', shareLink);
+  if (EMBED) {
+    // Downloads and file pickers are blocked inside chat frames.
+    item('Open in Geometry Drawer ↗', openInApp);
+    item('Asymptote / TikZ code…', () => showExport('asy'));
+  } else {
+    item('Open file…', () => $('#file').click(), 'Ctrl+O');
+    item('Save file', saveFile, 'Ctrl+S');
+    item('Export PNG', exportPng);
+    item('Export SVG', exportSvg);
+    item('Export Asymptote / TikZ…', () => showExport('asy'));
+    item('Copy share link', shareLink);
+  }
   m.append(el('hr'));
   item('Step through construction', enterSteps);
   choice('Theorem demos', '__demo', [['', 'Choose…'], ...DEMOS.map((d, i) => [String(i), d.title])]);
@@ -1238,7 +1254,7 @@ function openMenu() {
 function saveSettings() { store.set('gd:settings', S.settings); }
 
 function newDoc() {
-  if (cons.objs.length && !confirm('Start a new construction? (Undo can bring this one back.)')) return;
+  if (cons.objs.length && !okToReplace('Start a new construction? (Undo can bring this one back.)')) return;
   cons.load([]);
   S.selection.clear(); S.fnColor = 0;
   standardView();
@@ -1279,6 +1295,7 @@ async function decodeDoc(s) {
   return { format: 'geometry-drawer', version: 1, view: d.v, settings: d.s, objects: d.o, info: d.i && { title: String(d.i.t || ''), caption: String(d.i.c || '') } };
 }
 async function shareLink() {
+  if (EMBED) return openInApp();
   const url = `${location.origin}${location.pathname}#c=${await encodeDoc()}`;
   try { await navigator.clipboard.writeText(url); toast('Link copied - it contains the whole construction'); }
   catch { prompt('Copy this link:', url); }
@@ -1509,7 +1526,7 @@ function showExport(fmt) {
     el('div', { class: 'acts' },
       el('button', { type: 'button', class: 'btn', onclick: () => download(`diagram.${sel.value === 'tikz' ? 'tex' : 'asy'}`, new Blob([ta.value], { type: 'text/plain' })) }, 'Download'),
       el('button', { type: 'button', class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(ta.value); toast('Copied'); } catch { ta.select(); } } }, 'Copy'),
-      el('button', { type: 'submit', class: 'btn primary' }, 'Close')));
+      el('button', { type: 'button', class: 'btn primary', onclick: () => $('#dlg').close() }, 'Close')));
   dlg.append(form);
   dlg.onclose = null;
   dlg.showModal();
@@ -1674,7 +1691,7 @@ function exportSvg() {
 
 function loadDemo(i) {
   const d = DEMOS[i];
-  if (cons.objs.length && !confirm(`Replace the current construction with the ${d.title} demo? (Undo brings it back.)`)) return;
+  if (cons.objs.length && !okToReplace(`Replace the current construction with the ${d.title} demo? (Undo brings it back.)`)) return;
   cons.load([]);
   S.selection.clear();
   setTool('move');
@@ -1711,7 +1728,7 @@ const TEMPLATES = {
   'Two circles': ['O_1 = (-2, 0)', 'O_2 = (2.2, 0.4)', 'ω_1 = Circle(O_1, 2.5)', 'ω_2 = Circle(O_2, 2)'],
 };
 function applyTemplate(name) {
-  if (cons.objs.length && !confirm('Replace the current construction? (Undo brings it back.)')) return;
+  if (cons.objs.length && !okToReplace('Replace the current construction? (Undo brings it back.)')) return;
   cons.load([]);
   S.selection.clear();
   for (const line of TEMPLATES[name]) cons.exec(line, defaultStyle);
@@ -1842,6 +1859,65 @@ new ResizeObserver(() => resize()).observe($('#stage'));
 
 // ---------- start ----------
 
+// ---------- embedded in an AI chat ----------
+
+let host = null;
+function embedStart() {
+  document.documentElement.classList.add('embed');
+  host = connectHost({ onData: embedLoad, onContext: embedContext });
+  hint('Waiting for the figure from the chat…');
+  host.handshake.then(() => { addEmbedButtons(); host.reportSize(Math.ceil(document.documentElement.getBoundingClientRect().height)); });
+  setTimeout(addEmbedButtons, 2500);
+}
+function embedLoad(data) {
+  const d = data.doc;
+  S.embed = { link: data.link || '', title: data.title || '' };
+  loadDoc({ view: d.v, settings: d.s, objects: d.o || [] });
+  // The server framed the view for a vw × vh image: keep that window here.
+  if (d.vw && d.vh) view.scale *= Math.min(view.W / d.vw, view.H / d.vh);
+  S.history = []; S.hidx = -1; S.selection.clear();
+  resetTool(); setTool('move');
+  commit(); viewChanged();
+  if (data.title || data.caption) showInfo({ title: data.title || 'Geometry', caption: data.caption || 'Drag the points, or add to the figure with the tools above.' });
+}
+function embedContext(ctx) {
+  if (ctx.theme === 'dark' || ctx.theme === 'light') { S.settings.theme = ctx.theme; applyTheme(); }
+  if (ctx.displayMode) {
+    host && host.setDisplayMode(ctx.displayMode);
+    document.documentElement.classList.toggle('full', ctx.displayMode === 'fullscreen');
+    requestAnimationFrame(resize);
+  }
+}
+function addEmbedButtons() {
+  if (!host || $('#embedOpen')) return;
+  const right = $('#bar .right');
+  const b = (id, label, title, fn, cls = 'btn small') => el('button', { id, class: cls, title, onclick: fn }, label);
+  if (host.caps.message) right.prepend(b('embedAsk', 'Ask AI', 'Ask the AI about your figure', askAI));
+  if (host.caps.fullscreen) right.prepend(b('embedFull', '⤢', 'Fullscreen', () => host.toggleFullscreen()));
+  right.prepend(b('embedOpen', 'Open in app ↗', 'Open in the full Geometry Drawer website, with your edits', openInApp, 'btn small primary'));
+}
+async function openInApp() {
+  const base = (S.embed && S.embed.link ? S.embed.link.split('#')[0] : '') || (EMBED && EMBED.appUrl) || location.href.split('#')[0];
+  const url = `${base}#c=${await encodeDoc()}`;
+  if (host) host.openLink(url); else window.open(url, '_blank', 'noopener');
+}
+// Tell the AI what the figure looks like now, so it can build on the user's edits.
+let syncTimer = 0;
+function syncHostSoon() { clearTimeout(syncTimer); syncTimer = setTimeout(syncHost, 700); }
+function syncHost() {
+  if (!host) return;
+  const script = `${toScript(cons)}ShowAxes(${S.settings.axes})\nShowGrid(${S.settings.grid})\n`;
+  const text = `The user's current figure in the Geometry Drawer widget (they may have edited it). To build on it, call draw_geometry with this script plus your additions:\n\n${script}`;
+  host.updateContext(text, { script, doc: { v: view.toJSON(), vw: view.W, vh: view.H, s: { grid: S.settings.grid, axes: S.settings.axes }, o: cons.toJSON() } });
+}
+async function askAI() {
+  const r = await ask('Ask the AI about this figure', [{ key: 'q', label: 'Your question (your current figure is sent along)', type: 'textarea', value: '' }]);
+  if (!r || !r.q.trim()) return;
+  clearTimeout(syncTimer); syncHost();
+  const ok = await host.sendMessage(r.q.trim());
+  toast(ok ? 'Sent to the chat' : 'The chat did not accept the message', ok ? undefined : 'error');
+}
+
 async function start() {
   document.body.classList.toggle('noalg', !S.settings.algebra);
   renderToolbar();
@@ -1849,7 +1925,8 @@ async function start() {
   const st = $('#stage').getBoundingClientRect();
   R.resize(Math.max(50, st.width), Math.max(50, st.height), window.devicePixelRatio || 1);
   try {
-    if (location.hash.startsWith('#c=')) {
+    if (EMBED) { /* the figure comes from the chat host */ }
+    else if (location.hash.startsWith('#c=')) {
       const doc = await decodeDoc(location.hash.slice(3));
       loadDoc(doc);
       history.replaceState(null, '', location.pathname);
@@ -1865,8 +1942,9 @@ async function start() {
   viewChanged();
   if (cons.objs.some(o => o.style.anim)) startAnim();
   if (S.pendingInfo) showInfo({ title: S.pendingInfo.title || 'Shared construction', caption: S.pendingInfo.caption });
+  if (EMBED) embedStart();
 }
 start();
 
 // Exposed for the browser smoke test and for power users in the console.
-window.gd = { showTab, runScriptPane, toScript: () => toScript(cons), loadDemo, applyTemplate, exportDiagram: f => exportDiagram(cons, R, f), enterSteps, goStep, exitSteps, cons, view, S, exec: src => { const o = cons.exec(src, defaultStyle); commit(); return o; }, setTool, undo, redo, render, R, docJSON, encodeDoc, decodeDoc };
+window.gd = { get host() { return host; }, showTab, runScriptPane, toScript: () => toScript(cons), loadDemo, applyTemplate, exportDiagram: f => exportDiagram(cons, R, f), enterSteps, goStep, exitSteps, cons, view, S, exec: src => { const o = cons.exec(src, defaultStyle); commit(); return o; }, setTool, undo, redo, render, R, docJSON, encodeDoc, decodeDoc };

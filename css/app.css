@@ -252,6 +252,12 @@ dialog h2 { font-size: 16px; margin: 0 0 12px; }
 .cmds { columns: 2; padding-left: 18px; margin: 0; font-size: 13px; }
 .cmds li { break-inside: avoid; margin-bottom: 3px; }
 
+/* embedded in an AI chat: a fixed height the host can size the frame to */
+html.embed, html.embed body { height: 640px; }
+html.embed.full, html.embed.full body { height: 100vh; }
+html.embed #bar .right { align-items: center; gap: 4px; }
+html.embed #bar .right .btn { white-space: nowrap; }
+
 /* phones: algebra becomes a bottom sheet */
 @media (max-width: 760px) {
   main { flex-direction: column-reverse; }

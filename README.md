@@ -107,10 +107,13 @@ The **Script** tab, above the algebra list, runs whole programs.
 ### AI assistants (MCP)
 
 An MCP server lets Claude, ChatGPT or any MCP client draw from plain language.
-In chats that support **MCP Apps** (Claude and ChatGPT do), the figure appears
-**inside the conversation** as a live widget. It runs the app's own engine,
-so you can drag points, zoom and pan, with buttons for Fit, Reset, Fullscreen
-and *Open in app*. Other clients get the picture and the link. The
+In chats that support **MCP Apps** (Claude and ChatGPT do), the **full
+Geometry Drawer editor** appears inside the conversation, with the figure
+loaded: toolbar, input bar, algebra list, everything. Drag points or add your
+own objects. Your current figure is passed back to the AI quietly, for its
+next turn, so it can build on your edits. **Ask AI** posts a question about
+the figure into the chat. **Open in app** opens the website with your edits.
+Other clients get the picture and the link. The
 assistant writes a script, and the server runs it with the app's own engine.
 It returns errors by line, a PNG preview the assistant can look at, every
 object's value, and true/false checks re-tested on 40 random positions. It
@@ -151,7 +154,7 @@ Press `?` in the app for every shortcut and command.
 node tests/run-tests.mjs       # engine tests: parser, commands, intersections, save/load
 node tests/browser-smoke.mjs   # drives the real page in headless Chromium
 node mcp/test.mjs              # MCP server, end to end, through the official MCP client
-node mcp/widget-test.mjs       # the in-chat viewer in a sandboxed iframe, with a stand-in host
+node mcp/widget-test.mjs       # the in-chat editor in a sandboxed iframe, with a stand-in host
 bash scripts/deploy.sh         # all four tests, rsync to /var/www/geometry, restart geometry-mcp
 sudo systemctl status geometry-mcp     # the MCP server (Node, port 5040, runs from mcp/)
 sudo journalctl -u geometry-mcp -f

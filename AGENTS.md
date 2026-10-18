@@ -66,16 +66,21 @@ calls `recompute(from)`.
    app's `#c=z…` format, plus `i` for the title card). `mcp/server.mjs` is
    stateless Streamable HTTP: one fresh McpServer per POST, using
    `@modelcontextprotocol/sdk`.
-   The in-chat viewer is `js/widget.js` plus `mcp/widget.html`. At startup the
-   server bundles them with esbuild into one inline page, served as the MCP
-   Apps resource `ui://geometry-drawer/viewer.html` (mime
-   `text/html;profile=mcp-app`). `draw_geometry` points to it through
-   `_meta.ui.resourceUri`, plus the legacy `ui/resourceUri` key, and returns
-   `structuredContent` = {title, caption, link, doc}. The viewer speaks MCP
-   Apps JSON-RPC over postMessage (`ui/initialize`, then
-   `ui/notifications/tool-result`, `ui/open-link`, `size-changed`,
-   `request-display-mode`). It falls back to `window.openai` (ChatGPT's older
-   Apps SDK bridge).
+   The in-chat editor is the whole app. At startup the server inlines
+   `index.html`, `css/app.css` and `js/app.js` (bundled with esbuild) into one
+   page and sets `window.GD_EMBED`, which switches the app to embed mode:
+   memory-only storage, the figure comes from the host, extra buttons, and
+   no file or download menu items. It is served twice, as the MCP Apps
+   resource `ui://geometry-drawer/editor.html` (`text/html;profile=mcp-app`)
+   and as the ChatGPT Apps SDK resource `…/editor-skybridge.html`
+   (`text/html+skybridge`). `draw_geometry` points to both (`_meta.ui.resourceUri`,
+   `ui/resourceUri`, `openai/outputTemplate`) and returns `structuredContent`
+   = {title, caption, link, doc}.
+   `js/hostbridge.js` speaks MCP Apps over postMessage (`ui/initialize`,
+   then `tool-result`, `update-model-context` after each user edit,
+   `ui/message` for Ask AI, `open-link`, `size-changed`,
+   `request-display-mode`), or `window.openai` when that is what exists. On
+   ChatGPT, `widgetState` keeps edits across remounts.
 
 ## Invariants
 
@@ -111,9 +116,16 @@ calls `recompute(from)`.
 
 ## Gotchas
 
-- The viewer must stay self-contained, with no network and no external
-  files. Its CSP declares no domains, and hosts block anything not
+- The embedded editor must stay self-contained, with no network and no
+  external files. Its CSP declares no domains, and hosts block anything not
   declared. Send nothing to the host before the `ui/initialize` reply.
+- **Never rely on form submission, `confirm()`, `prompt()` or downloads.**
+  Chat frames may be sandboxed without `allow-forms`, `allow-modals` or
+  `allow-downloads`. Dialog OK buttons and Enter keys call their handlers
+  directly; `okToReplace()` skips `confirm()` when embedded.
+- `index.html` must keep its `<link rel="stylesheet" href="css/app.css">` and
+  `<script type="module" src="js/app.js">` lines exactly as they are. The server
+  inlines them by string match and refuses to start if they change.
 - Chromium runs a sandboxed srcdoc iframe out of process, so
   `widget-test.mjs` attaches to it as its own CDP target (`flatten`).
 - `mcp/` imports `../js/*.js` from this checkout. After any engine change,
