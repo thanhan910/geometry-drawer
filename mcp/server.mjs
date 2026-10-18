@@ -1,8 +1,10 @@
 // Geometry Drawer MCP server: lets AI assistants (Claude and any other MCP
 // client) draw by writing construction scripts. Stateless Streamable HTTP:
-// every POST /mcp gets a fresh server, nothing is stored, nothing is private.
+// every POST /mcp gets a fresh server. Drawings run in worker threads with a
+// time limit (pool.mjs). The only thing kept is the figure behind each short
+// link (draw.mjs), so the link can be short enough for an AI to copy.
 //
-//   PORT=5040 node server.mjs      →  POST /mcp, GET /healthz, GET / (help page)
+//   PORT=5040 node server.mjs      →  POST /mcp, GET /healthz, GET /s/<id>, GET / (help page)
 
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -10,12 +12,17 @@ import { buildSync } from 'esbuild';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import { draw, APP_URL, LIMITS, readShare } from './draw.mjs';
+import { APP_URL, LIMITS, readShare } from './draw.mjs';
+import { createPool } from './pool.mjs';
 import { languageGuide } from '../js/guide.js';
 
 const PORT = +(process.env.PORT || 5040);
 const HOST = process.env.HOST || '127.0.0.1';
 const MAX_BODY = 256 * 1024;
+// Drawing is CPU work on untrusted scripts: two worker threads, each drawing
+// stopped after DRAW_TIMEOUT_MS, at most 8 waiting.
+const pool = createPool(new URL('./draw-worker.mjs', import.meta.url), {
+  size: +(process.env.DRAW_WORKERS || 2), timeoutMs: +(process.env.DRAW_TIMEOUT_MS || 10000), maxQueue: 8 });
 
 // The in-chat editor: the full Geometry Drawer page (index.html, its CSS and
 // js/app.js with the whole engine bundled by esbuild) inlined into one HTML
@@ -30,7 +37,11 @@ const EDITOR_HTML = (() => {
   const css = readFileSync(new URL('css/app.css', ROOT), 'utf8');
   let html = readFileSync(new URL('index.html', ROOT), 'utf8');
   const before = html;
-  html = html.replace('<link rel="stylesheet" href="css/app.css">', () => `<style>${css}</style>`)
+  // The website's own policy is for its own origin; in a chat the host sets
+  // the policy and everything is inline.
+  const csp = /<meta http-equiv="Content-Security-Policy"[^>]*>\n/;
+  if (!csp.test(html)) throw new Error('index.html changed: cannot find its Content-Security-Policy');
+  html = html.replace(csp, '').replace('<link rel="stylesheet" href="css/app.css">', () => `<style>${css}</style>`)
     .replace('<script type="module" src="js/app.js"></script>', () => `<script>window.GD_EMBED = ${JSON.stringify({ appUrl: APP_URL })};</script>\n<script>${js}</script>`);
   if (html === before || html.includes('src="js/app.js"') || html.includes('href="css/app.css"')) throw new Error('index.html changed: cannot inline the editor');
   return html;
@@ -88,9 +99,9 @@ function buildServer() {
       'openai/toolInvocation/invoking': 'Drawing the figure…', 'openai/toolInvocation/invoked': 'Figure ready' },
   }, async ({ script, title, caption, verify, show_axes, show_grid, image }) => {
     try {
-      const r = draw({ script, title, caption, verify: verify || [], showAxes: show_axes, showGrid: show_grid, image: image !== false });
+      const r = await pool.run({ script, title, caption, verify: verify || [], showAxes: show_axes, showGrid: show_grid, image: image !== false });
       const content = [{ type: 'text', text: r.text }];
-      if (r.png) content.push({ type: 'image', data: r.png.toString('base64'), mimeType: 'image/png' });
+      if (r.png) content.push({ type: 'image', data: Buffer.from(r.png).toString('base64'), mimeType: 'image/png' });
       return { content, structuredContent: r.structured, isError: r.objects === 0 && r.errors.length > 0 };
     } catch (e) {
       return { content: [{ type: 'text', text: `Could not draw: ${e.message}` }], isError: true };
@@ -111,24 +122,28 @@ it writes a construction script, checks it, and gives you a link that opens the 
 <li><b>Claude Code:</b> <code>claude mcp add --transport http geometry <span class="u"></span></code></li>
 <li><b>Other clients:</b> add a remote MCP server with the "Streamable HTTP" transport and the URL above.</li>
 </ul>
-<p>No sign-in and nothing is stored: each request is computed and forgotten.</p>
+<p>No sign-in. Each request is computed and forgotten, except the figure behind each short link
+(its objects, view, title and caption), which is kept so the link keeps working; links not opened for a long time are removed when the store is full.
+Request logs record the client's name and which tools it called, never scripts.</p>
 <script>const u = location.origin + location.pathname.replace(/\\/?$/, '/') + 'mcp'; document.getElementById('u').textContent = u; document.querySelectorAll('.u').forEach(e => e.textContent = u);</script>`;
 
-const json = (res, code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
+const SECURITY = { 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' };
+const json = (res, code, obj) => { res.writeHead(code, { ...SECURITY, 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
+const HELP_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 createServer(async (req, res) => {
   const path = new URL(req.url, 'http://x').pathname;
-  if (path === '/healthz') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok\n'); return; }
+  if (path === '/healthz') { res.writeHead(200, { ...SECURITY, 'content-type': 'text/plain' }); res.end('ok\n'); return; }
   // Short links: the app fetches /s/<id> for #s=<id>. Content-addressed, so
   // a stored figure never changes and can be cached for ever.
   if (path.startsWith('/s/') && req.method === 'GET') {
     const body = readShare(path.slice(3));
     if (!body) { json(res, 404, { error: 'This figure link is unknown or has expired.' }); return; }
-    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'public, max-age=31536000, immutable' });
+    res.writeHead(200, { ...SECURITY, 'content-type': 'application/json', 'cache-control': 'public, max-age=31536000, immutable' });
     res.end(body);
     return;
   }
-  if (path === '/' && req.method === 'GET') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(HELP_PAGE); return; }
+  if (path === '/' && req.method === 'GET') { res.writeHead(200, { ...SECURITY, 'content-security-policy': HELP_CSP, 'content-type': 'text/html; charset=utf-8' }); res.end(HELP_PAGE); return; }
   if (path !== '/mcp') { json(res, 404, { error: 'not found' }); return; }
   if (req.method !== 'POST') { json(res, 405, { jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed: this server is stateless, use POST.' }, id: null }); return; }
   let size = 0;

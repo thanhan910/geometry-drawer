@@ -6,7 +6,9 @@ server. It opens instantly, and every tool has a one-key shortcut.
 
 **URL:** `https://nbg5pc.taileeca1e.ts.net/geometry/`, **public** (operator
 decision, 2026-10-18). It is a static page: constructions stay in the
-visitor's browser, and nothing is stored on the server.
+visitor's browser. The only thing kept on the server is the figure behind each
+AI short link (see below). Architecture, security review and the production
+plan: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## What it does
 
@@ -98,8 +100,9 @@ The **Script** tab, above the algebra list, runs whole programs.
 - **JavaScript:** code that writes commands, for loops, families and
   computed coordinates. `cmd("...")` adds a command, `point(name, x, y)` a
   free point, and `range(n)` and `fmt(x)` help with loops. It runs in a
-  sandboxed Web Worker with no access to the page or saved data, and is
-  stopped after 3 seconds. JavaScript is never put in share links.
+  Web Worker inside a sandboxed frame (`sandbox.html`): no access to the
+  page, saved data or the network, and it is stopped after 3 seconds.
+  JavaScript is never put in share links.
 - **From figure** turns the current construction into a script, styles
   included. **Copy AI prompt** copies a description of the language that
   teaches any AI chat to write scripts.
@@ -126,8 +129,12 @@ title and explanation on a card.
   The server stores the figure under that 12-character code, because AIs
   retype links and a long self-contained link breaks if one character
   changes. Figures are in `/var/lib/geometry-mcp/shares`, at most 200 KB
-  each and 20,000 in total, oldest removed first. Losing the directory
-  only breaks old short links.
+  each and 20,000 in total; when full, the figures least recently drawn or
+  opened are removed. New figures are capped at about 300 an hour per drawing
+  worker; past that, the tool gives the long link instead. Losing the
+  directory only breaks old short links.
+- **Limits:** each drawing runs in a worker thread and is stopped after
+  10 seconds; two workers, at most 8 drawings waiting.
 - **Claude (web or desktop):** Settings, then Connectors, then *Add custom
   connector*, and paste the URL.
 - **ChatGPT (web):** turn on Settings, then Apps & Connectors, then

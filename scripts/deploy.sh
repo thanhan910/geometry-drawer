@@ -32,7 +32,7 @@ $SUDO mkdir -p "$DEST"
 # Only what the browser loads. --delete-excluded removes anything that was
 # deployed once and is excluded now.
 $SUDO rsync -a --delete --delete-excluded \
-  --include "/index.html" --include "/css/***" --include "/js/***" --exclude "*" \
+  --include "/index.html" --include "/sandbox.html" --include "/css/***" --include "/js/***" --exclude "*" \
   "$REPO"/ "$DEST"/
 
 if [ -n "$OWNER" ]; then

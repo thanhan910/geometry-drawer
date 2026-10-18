@@ -3,7 +3,7 @@
 // Kept apart from server.mjs so tests can call it without HTTP.
 
 import { deflateRawSync } from 'node:zlib';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync, unlinkSync, utimesSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { Resvg } from '@resvg/resvg-js';
@@ -36,10 +36,24 @@ export function shareLink(cons, view, settings, info) {
 
 // Short links: the figure is stored under a content hash and the link is
 // #s=<12 characters>, which survives an AI copying it. Bounded storage:
-// each figure ≤ 200 KB, at most SHARE_MAX files, oldest removed first.
+// each figure ≤ 200 KB, at most SHARE_MAX files. Pruning removes the least
+// recently used: storing or opening a figure marks it used, so links people
+// open survive a flood of new ones. New figures are also capped per hour
+// (SHARE_RATE, counted per drawing worker); past the cap draw() falls back to
+// the long link, which needs no storage.
 export const SHARE_DIR = process.env.SHARE_DIR || '/var/lib/geometry-mcp/shares';
 const SHARE_MAX = +(process.env.SHARE_MAX || 20000);
+const SHARE_RATE = +(process.env.SHARE_RATE || 300);
 export const SHARE_ID = /^[0-9a-z]{12}$/;
+const recent = [];                               // times of new figures in the last hour
+function underBudget() {
+  const now = Date.now();
+  while (recent.length && now - recent[0] > 3600e3) recent.shift();
+  if (recent.length >= SHARE_RATE) return false;
+  recent.push(now);
+  return true;
+}
+const touch = file => { const now = new Date(); try { utimesSync(file, now, now); } catch { /* read-only or gone */ } };
 export function storeShare(payload) {
   const json = JSON.stringify(payload);
   if (json.length > 200 * 1024) return null;
@@ -47,12 +61,12 @@ export function storeShare(payload) {
   try {
     mkdirSync(SHARE_DIR, { recursive: true });
     const file = join(SHARE_DIR, `${id}.json`);
-    if (!existsSync(file)) {
-      const tmp = `${file}.${process.pid}.tmp`;
-      writeFileSync(tmp, json);
-      renameSync(tmp, file);
-      pruneShares();
-    }
+    if (existsSync(file)) { touch(file); return id; }
+    if (!underBudget()) { console.error('share store: hourly cap reached, using a long link'); return null; }
+    const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+    writeFileSync(tmp, json);
+    renameSync(tmp, file);
+    pruneShares();
     return id;
   } catch (e) {
     console.error('share store failed', e.message);
@@ -69,7 +83,8 @@ function pruneShares() {
 }
 export function readShare(id) {
   if (!SHARE_ID.test(id)) return null;
-  try { return readFileSync(join(SHARE_DIR, `${id}.json`), 'utf8'); } catch { return null; }
+  const file = join(SHARE_DIR, `${id}.json`);
+  try { const body = readFileSync(file, 'utf8'); touch(file); return body; } catch { return null; }
 }
 
 function rowText(o) {

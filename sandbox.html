@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<!-- Runs Script panel JavaScript for the website. The app loads this page in an
+     <iframe sandbox="allow-scripts">, so it has an opaque origin: it cannot
+     read the site's pages, cookies or storage. This policy (also sent as a
+     header by Nginx) blocks every network request, from here and from the
+     worker, which inherits it. The page is a relay: the app posts {worker,
+     code}, the worker runs the code, the result goes back to the app. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob:; worker-src blob:; connect-src 'none'">
+<title>Geometry Drawer sandbox</title>
+<script>
+addEventListener('message', e => {
+  if (e.source !== parent || !e.data || typeof e.data.code !== 'string' || typeof e.data.worker !== 'string') return;
+  const reply = result => parent.postMessage({ gdSandbox: 'result', result }, '*');
+  try {
+    const w = new Worker(URL.createObjectURL(new Blob([e.data.worker], { type: 'text/javascript' })));
+    w.onmessage = m => reply(m.data);
+    w.onerror = ev => { ev.preventDefault(); reply({ out: [], logs: [], error: ev.message }); };
+    w.postMessage(e.data.code);
+  } catch (err) {
+    reply({ out: [], logs: [], error: 'The JavaScript sandbox could not start: ' + err.message });
+  }
+});
+parent.postMessage({ gdSandbox: 'ready' }, '*');
+</script>

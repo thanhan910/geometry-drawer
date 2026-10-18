@@ -9,19 +9,28 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { Construction } from '../js/construction.js';
 
-let url = process.argv[2], child = null;
-const shareDir = process.argv[2] ? null : (await import('node:fs/promises')).mkdtemp((await import('node:os')).tmpdir() + '/gd-shares-');
-if (!url) {
+const { mkdtemp } = await import('node:fs/promises'), { tmpdir } = await import('node:os');
+const children = [];
+// A local server with its own empty short-link store and any extra settings.
+async function startServer(env = {}) {
   const port = 5600 + Math.floor(Math.random() * 300);
-  child = spawn(process.execPath, [new URL('./server.mjs', import.meta.url).pathname], { env: { ...process.env, PORT: String(port), SHARE_DIR: await shareDir }, stdio: ['ignore', 'pipe', 'inherit'] });
-  url = `http://127.0.0.1:${port}/mcp`;
-  for (let i = 0; i < 50; i++) { try { if ((await fetch(url.replace('/mcp', '/healthz'))).ok) break; } catch { /* starting */ } await delay(100); }
+  const child = spawn(process.execPath, [new URL('./server.mjs', import.meta.url).pathname], { env: { ...process.env, PORT: String(port), SHARE_DIR: await mkdtemp(tmpdir() + '/gd-shares-'), ...env }, stdio: ['ignore', 'pipe', 'inherit'] });
+  children.push(child);
+  const u = `http://127.0.0.1:${port}/mcp`;
+  for (let i = 0; i < 50; i++) { try { if ((await fetch(u.replace('/mcp', '/healthz'))).ok) break; } catch { /* starting */ } await delay(100); }
+  return u;
 }
+async function connect(u) {
+  const client = new Client({ name: 'geometry-test', version: '1.0.0' });
+  await client.connect(new StreamableHTTPClientTransport(new URL(u)));
+  return client;
+}
+const local = !process.argv[2];
+let url = process.argv[2] || await startServer();
 let fail = 0;
 const check = (c, m) => { console.log(`${c ? 'OK  ' : 'FAIL'} ${m}`); if (!c) fail++; };
 try {
-  const client = new Client({ name: 'geometry-test', version: '1.0.0' });
-  await client.connect(new StreamableHTTPClientTransport(new URL(url)));
+  const client = await connect(url);
   const tools = (await client.listTools()).tools.map(t => t.name).sort();
   check(tools.join(',') === 'draw_geometry,geometry_language', `tools listed: ${tools}`);
   check(/geometry_language/.test(client.getInstructions() || ''), 'server instructions explain the workflow');
@@ -41,7 +50,7 @@ try {
   const link = /https?:\/\/\S+#s=([0-9a-z]{12})\b/.exec(text);
   check(!!link, `short share link returned (${link && link[0]})`);
   const sres = await fetch(url.replace(/\/mcp$/, `/s/${link[1]}`));
-  check(sres.ok && /immutable/.test(sres.headers.get('cache-control') || ''), 'short link resolves, cacheable');
+  check(sres.ok && /immutable/.test(sres.headers.get('cache-control') || '') && sres.headers.get('x-content-type-options') === 'nosniff', 'short link resolves, cacheable, nosniff');
   const payload = await sres.json();
   check((await fetch(url.replace(/\/mcp$/, '/s/zzzzzzzzzzzz'))).status === 404 && (await fetch(url.replace(/\/mcp$/, '/s/..%2Fetc')).then(r => r.status)) === 404, 'unknown or malformed ids are 404');
   const long = r.structuredContent && r.structuredContent.doc;
@@ -53,10 +62,29 @@ try {
   const graph = await client.callTool({ name: 'draw_geometry', arguments: { script: 'f(x) = sin(x)\ng(x) = x^2/4 - 1\nS = Intersect(f, g)', image: false } });
   check(/axes/.test('axes') && !graph.content.some(x => x.type === 'image') && /S = \{/.test(graph.content[0].text), 'function graphs and point lists, image off');
   await client.close();
+  const help = await fetch(url.replace(/\/mcp$/, '/'));
+  const helpText = await help.text();
+  check(/short link/.test(helpText) && !/nothing is stored/.test(helpText) && /default-src 'none'/.test(help.headers.get('content-security-policy') || ''), 'help page states what is stored and has a strict policy');
+
+  if (local) {
+    // Hourly cap on new short links: past it, a long link that needs no storage.
+    const capped = await connect(await startServer({ SHARE_RATE: '1', DRAW_WORKERS: '1' }));
+    const linkOf = async script => (await capped.callTool({ name: 'draw_geometry', arguments: { script, image: false } })).content[0].text.match(/#([sc])=/)?.[1];
+    check(await linkOf('A = (0, 0)') === 's' && await linkOf('B = (1, 1)') === 'c' && await linkOf('A = (0, 0)') === 's',
+      'past the hourly cap new figures get a long link; stored ones keep their short link');
+    await capped.close();
+    // Time limit per drawing: the worker is stopped and replaced.
+    const slow = await connect(await startServer({ DRAW_TIMEOUT_MS: '5', DRAW_WORKERS: '1' }));
+    const t = await slow.callTool({ name: 'draw_geometry', arguments: { script: 'A = (0, 0)\nB = (4, 0)\nC = (1, 3)\nk = Circumcircle(A, B, C)' } });
+    check(t.isError && /longer than 0.005 seconds/.test(t.content[0].text), `a drawing over the time limit is stopped (${t.content[0].text.slice(0, 60)})`);
+    const again = await slow.callTool({ name: 'draw_geometry', arguments: { script: 'A = (0, 0)' } });
+    check(again.isError && /longer than/.test(again.content[0].text), 'the replacement worker takes the next drawing');
+    await slow.close();
+  }
 } catch (e) {
   check(false, `crashed: ${e.stack || e.message}`);
 } finally {
-  if (child) child.kill();
+  for (const c of children) c.kill();
 }
 console.log(fail ? `${fail} failure(s)` : 'all MCP checks passed');
 process.exit(fail ? 1 : 0);

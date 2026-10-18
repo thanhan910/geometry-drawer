@@ -8,13 +8,19 @@ to `server-g5-setup-01`; do not restate it here.
 ## Current position
 
 Deployed at `/geometry/`, **public** since 2026-10-18 (operator decision),
-from `/var/www/geometry`. 81 engine tests (including one per theorem demo) and the headless browser
-smoke test pass, and so does the MCP end-to-end test (`node mcp/test.mjs`). The MCP
+from `/var/www/geometry`. 85 engine tests (including one per theorem demo), the headless browser
+smoke test and the three MCP suites pass (`bash scripts/deploy.sh` runs all five). The MCP
 server is public at `/geometry-mcp/mcp` since 2026-10-18 (the operator
 delegated the choice), running as systemd `geometry-mcp` on :5040. The
 Asymptote and TikZ exports were compiled with real `asy` and
 `pdflatex` in a throwaway Debian container (2026-10-18). Neither tool is
 installed on the host. Pushed to GitHub (`origin/main`).
+
+Production readiness was reviewed on 2026-10-18 (`docs/ARCHITECTURE.md`).
+Phase 0 of its plan is done: sandboxed JavaScript, page CSP and security
+headers, drawing time limits, the short-link hourly cap and least-recently-used
+pruning, and truthful privacy wording. Phases 1 (own domain, off this host) and
+2 (public launch) wait on the open decisions listed there.
 
 ## How it works
 
@@ -65,7 +71,10 @@ calls `recompute(from)`.
    (svgctx, then resvg with the DejaVu fonts) and builds the share link (the
    app's `#c=z…` format, plus `i` for the title card). `mcp/server.mjs` is
    stateless Streamable HTTP: one fresh McpServer per POST, using
-   `@modelcontextprotocol/sdk`.
+   `@modelcontextprotocol/sdk`. `draw()` runs in worker threads
+   (`mcp/pool.mjs`, `mcp/draw-worker.mjs`): DRAW_WORKERS (2), each drawing
+   stopped after DRAW_TIMEOUT_MS (10 s), at most 8 queued. A stopped worker
+   is replaced.
    The in-chat editor is the whole app. At startup the server inlines
    `index.html`, `css/app.css` and `js/app.js` (bundled with esbuild) into one
    page and sets `window.GD_EMBED`, which switches the app to embed mode:
@@ -103,14 +112,24 @@ calls `recompute(from)`.
 - **Commands return `null` for a wrong signature.** `call()` then raises the
   usage message from `HELP`. Return `UNDEF` only for valid input with no
   result.
-- **User JavaScript only runs in the Web Worker** (`runJS` in `app.js`), with
-  a 3 s kill, and is never saved in documents or share links. Shared links
-  carry only the construction language, which cannot run code.
+- **User JavaScript only runs in a Web Worker inside `sandbox.html`**
+  (`runJS` in `app.js`), framed with `sandbox="allow-scripts"`: an opaque
+  origin whose CSP (meta, and an Nginx header) allows no network. This
+  matters because `/geometry/` shares its origin with tailnet-only tools such
+  as `/launcher/`: same-origin code could read them, CSRF tokens included.
+  The page's own CSP (`worker-src 'none'`) stops a worker being started
+  outside the frame. Embedded in a chat, the plain worker is used, since the
+  host's frame is already a throwaway origin. 3 s kill; JavaScript is never
+  saved in documents or share links. Shared links carry only the
+  construction language, which cannot run code.
 - **The MCP server stores only short-link figures**, content-addressed (the
   id is a hash of the figure, so they never change), at most 200 KB each
-  and SHARE_MAX (20,000) in total, with the oldest pruned. That, plus nginx
-  throttling (60 requests a minute per client, 256 KB bodies) and the
-  script caps in `draw.mjs` (20,000 characters, 600 statements), is what
+  and SHARE_MAX (20,000) in total, pruning the least recently used (storing
+  or opening a figure touches its mtime). New figures are capped at
+  SHARE_RATE (300) an hour per worker, then the long link is used. That, plus
+  nginx throttling (60 requests a minute per client, 256 KB bodies), the
+  drawing time limit and the script caps in `draw.mjs` (20,000 characters,
+  600 statements), is what
   makes running it public with no auth acceptable. Do not add anything
   that stores user-chosen data beyond this.
 - **Links an AI repeats must be short.** AIs retype links, and the long
@@ -132,7 +151,15 @@ calls `recompute(from)`.
   directly; `okToReplace()` skips `confirm()` when embedded.
 - `index.html` must keep its `<link rel="stylesheet" href="css/app.css">` and
   `<script type="module" src="js/app.js">` lines exactly as they are. The server
-  inlines them by string match and refuses to start if they change.
+  inlines them by string match and refuses to start if they change. It also
+  strips the page's `Content-Security-Policy` meta tag (the chat host sets the
+  policy there) and refuses to start if that tag is missing.
+- The page's CSP means no inline scripts, no `eval` and no workers on the
+  page itself. Load code as files under `js/`.
+- `docs/ARCHITECTURE.md` is the repository copy of the Claude Docs doc
+  "Geometry Drawer: Architecture and Production Plan" (the operator's
+  working copy). Its diagrams are PNG renders of the doc's drawings in
+  `docs/img/`; a markdown export drops them. Change both together.
 - **Chat apps cache the tool list.** ChatGPT web (`openai-mcp/1.0.0`) read
   `tools/list` once, when the connector was created, and kept calling tools
   from that copy, so the editor never appeared until it was refreshed.

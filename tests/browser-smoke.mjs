@@ -307,6 +307,9 @@ try {
   check(/3 seconds/.test(outp), 'endless JavaScript loop is stopped');
   outp = await runPane('js', 'cmd(typeof document, typeof localStorage)');
   check(await ev("gd.cons.objs.length") === 0 && /error/.test(outp), 'sandboxed JavaScript cannot see the page');
+  outp = await runPane('js', 'const x = new XMLHttpRequest();\nx.open("GET", "/", false);\nx.send();\ncmd("A = (1, 1)")');
+  check(await ev("gd.cons.objs.length") === 0 && /JavaScript error/.test(outp), `sandboxed JavaScript cannot make web requests (${outp.slice(0, 70)})`);
+  check(await ev("document.querySelectorAll('iframe').length") === 0, 'the sandbox frame is removed after each run');
   const sc = await ev("gd.toScript()");
   check(sc === '', 'empty construction gives an empty script');
   await ev("gd.showTab('alg'); true");

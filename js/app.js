@@ -1604,8 +1604,41 @@ self.onmessage = e => {
   }
 };`;
 
-// User JavaScript runs in a Web Worker: no page, no storage, killed after 3 s.
+// User JavaScript runs in a Web Worker, killed after 3 s. On the website the
+// worker lives inside sandbox.html, framed with sandbox="allow-scripts": an
+// opaque origin with no network, so code cannot reach the site's other paths
+// (the same origin hosts private tools). Embedded in a chat, the host's own
+// sandbox frame already gives the editor a throwaway origin, so a plain worker
+// is enough there.
 function runJS(code) {
+  return EMBED ? runJSWorker(code) : runJSSandboxed(code);
+}
+function runJSSandboxed(code) {
+  return new Promise(resolve => {
+    const frame = el('iframe', { sandbox: 'allow-scripts', src: 'sandbox.html', hidden: true, title: 'JavaScript sandbox' });
+    let timer;
+    const done = r => { clearTimeout(timer); removeEventListener('message', onMessage); frame.remove(); resolve(r); };
+    // Untrusted: keep only well-formed strings and numbers.
+    const clean = r => ({
+      out: Array.isArray(r && r.out) ? r.out.slice(0, 5000).map(String) : [],
+      logs: Array.isArray(r && r.logs) ? r.logs.slice(0, 200).map(String) : [],
+      error: r && r.error != null ? String(r.error) : undefined,
+      line: r && Number.isInteger(r.line) ? r.line : null,
+    });
+    const onMessage = e => {
+      if (e.source !== frame.contentWindow || !e.data) return;
+      if (e.data.gdSandbox === 'ready') {
+        clearTimeout(timer);
+        timer = setTimeout(() => done({ out: [], logs: [], error: 'Stopped after 3 seconds (an endless loop?)' }), 3000);
+        frame.contentWindow.postMessage({ worker: WORKER_SRC, code }, '*');
+      } else if (e.data.gdSandbox === 'result') done(clean(e.data.result));
+    };
+    addEventListener('message', onMessage);
+    timer = setTimeout(() => done({ out: [], logs: [], error: 'The JavaScript sandbox did not start' }), 8000);
+    document.body.append(frame);
+  });
+}
+function runJSWorker(code) {
   return new Promise(resolve => {
     const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' }));
     const w = new Worker(url);
