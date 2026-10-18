@@ -38,6 +38,39 @@ visitor's browser, and nothing is stored on the server.
   unlimited, and the construction autosaves in the browser.
 - **Share:** save and open `.json` files, export a PNG, or copy a link that
   contains the whole construction.
+
+### For olympiad geometry
+
+- **Check relation (`Q`):** click 2–4 objects. It reports whether points are
+  collinear or concyclic, lines concurrent, parallel or perpendicular, circles
+  tangent, orthogonal or coaxal, and whether four points form a harmonic
+  range or quadrilateral. It also finds equal distances, right angles, and
+  simple ratios such as α = 2β. It then moves every free point through 40
+  random nearby positions and tells you whether each fact holds **always**
+  (likely a theorem) or **only in this picture** (a coincidence).
+- **Triangle centres:** Kimberling X(1)–X(11), X(13), X(14), X(20), X(40),
+  plus excentres, excircles, the nine-point circle, the Euler line, altitudes,
+  medians, symmedians, and the medial, orthic, intouch, pedal and cevian
+  triangles.
+- **Classical tools:** feet of perpendiculars, the Simson line, isogonal and
+  isotomic conjugates, arc midpoints, antipodes, power of a point, radical
+  axis and radical centre, homothety centres, all four common tangents,
+  the spiral-similarity centre, the Miquel point, harmonic conjugates, cross
+  ratio, pole and polar, and points from barycentric or trilinear
+  coordinates.
+- **True/false commands for the input bar:** `AreCollinear`, `AreConcyclic`,
+  `AreConcurrent`, `AreParallel`, `ArePerpendicular`, `AreEqual`,
+  `AreTangent`, `IsOn`.
+- **Diagram conventions:** `Angle(A, B, C)` is ∠ABC, at most 180°.
+  `OrientedAngle` gives the counter-clockwise 0–360° angle. Equal segments
+  get 1–3 tick marks and equal angles 1–3 arcs (set them in the properties
+  panel). `I_A` and `A_{12}` draw as real subscripts.
+- **Write-ups:** *Menu → Export Asymptote / TikZ* turns the visible diagram
+  into code that compiles with `asy` or `pdflatex`.
+- **Teaching:** *Step through construction* replays a figure one object at a
+  time. *New from template* starts a triangle, a triangle with its
+  circumcircle or incircle, a cyclic quadrilateral, or two circles, and turns
+  on the clean diagram (no axes or grid).
 - Light and dark themes, touch and pinch-zoom, and a phone layout.
 
 Press `?` in the app for every shortcut and command.
@@ -52,6 +85,7 @@ Press `?` in the app for every shortcut and command.
 | `H` / `J` | Perpendicular / parallel | `F` / `O` | Reflect / rotate |
 | `B` | Perpendicular bisector | `N` / `T` | Slider / text |
 | `G` | Polygon | `X` | Delete |
+| `Q` | Check relation | | |
 
 ## Commands
 

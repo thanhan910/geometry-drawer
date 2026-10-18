@@ -7,8 +7,10 @@ to `server-g5-setup-01`; do not restate it here.
 ## Current position
 
 Deployed at `/geometry/`, **public** since 2026-10-18 (operator decision),
-from `/var/www/geometry`. 52 engine tests and the headless browser smoke test
-pass. Pushed to GitHub (`origin/main`).
+from `/var/www/geometry`. 69 engine tests and the headless browser smoke test
+pass. The Asymptote and TikZ exports were compiled with real `asy` and
+`pdflatex` in a throwaway Debian container (2026-10-18). Neither tool is
+installed on the host. Pushed to GitHub (`origin/main`).
 
 ## How it works
 
@@ -23,8 +25,16 @@ The modules load in dependency order:
    val, style}` for each. It does topological sort, recompute, rename, delete
    (which cascades), locus, and save/load, where save is `name` plus the
    printed definition.
+   `js/olympiad.js` registers the olympiad commands into the same table:
+   triangle centres from Kimberling barycentrics, conjugates, radical axes,
+   spiral similarity, and harmonic division. It also holds `relations()`, the
+   relation finder used by the Check-relation tool. The tool's "always / only
+   here" verdict comes from `generality()` in `app.js`, which jitters the free
+   points 40 times and restores them.
 4. `js/render.js` draws to a Canvas 2D context. Each draw caches screen
    geometry in `o._g`, and hit testing reads that cache.
+   `js/export.js` builds Asymptote and TikZ output from that cached geometry,
+   converted back to world coordinates.
 5. `js/tools.js` holds the tool table. Each tool has selection patterns and a
    `make()` that returns definitions as source strings. `js/app.js` holds the
    tool engine and all of the UI.
@@ -48,6 +58,12 @@ calls `recompute(from)`.
 - **Name pools:** points get `A…`, segments `a, b…`, lines, curves and
   functions `f, g…`, angles get Greek letters. `x`, `y`, `e` and `pi` are
   reserved.
+- **`Angle(A, B, C)` is non-reflex (≤ 180°)**, as ∠ABC is in a proof.
+  `OrientedAngle` is the counter-clockwise one. The polygon-angle and
+  given-size tools use `OrientedAngle` on purpose.
+- **Hit testing reads the last frame's geometry**, so `pointerdown` flushes a
+  pending frame first. Without that, a click within one frame of a change
+  misses new objects.
 - **Commands return `null` for a wrong signature.** `call()` then raises the
   usage message from `HELP`. Return `UNDEF` only for valid input with no
   result.

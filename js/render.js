@@ -47,6 +47,19 @@ export function role(o, cons) {
 
 const DASH = [[], [8, 6], [2, 5]];
 
+// Short strokes across the middle of a segment (screen coordinates).
+export function tickMarks(pl, n) {
+  const ax = pl[0], ay = pl[1], bx = pl[pl.length - 2], by = pl[pl.length - 1];
+  const L = hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / L, uy = (by - ay) / L, nx = -uy, ny = ux;
+  const mx = (ax + bx) / 2, my = (ay + by) / 2, out = [];
+  for (let k = 0; k < n; k++) {
+    const o = (k - (n - 1) / 2) * 5;
+    out.push([mx + ux * o - nx * 6, my + uy * o - ny * 6, mx + ux * o + nx * 6, my + uy * o + ny * 6]);
+  }
+  return out;
+}
+
+
 function niceStep(raw) {
   const p = Math.pow(10, Math.floor(Math.log10(raw)));
   const m = raw / p;
@@ -99,7 +112,7 @@ export class Renderer {
     c.fillRect(0, 0, v.W, v.H);
     if (this.settings.grid) this.drawGrid();
     if (this.settings.axes) this.drawAxes();
-    const objs = cons.objs.filter(o => (!o.style.hidden || st.showHidden) && o.val.t !== 'undef');
+    const objs = cons.objs.filter(o => (!o.style.hidden || st.showHidden) && o.val.t !== 'undef' && (!st.only || st.only.has(o.name)));
     for (const o of cons.objs) o._g = null;
     const layer = o => {
       const t = o.val.t;
@@ -110,7 +123,7 @@ export class Renderer {
       return 2;
     };
     const sorted = objs.map((o, i) => [layer(o), i, o]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(x => x[2]);
-    for (const o of cons.objs) if (o.trace && o.trace.length && !o.style.hidden) this.drawTrace(o, cons);
+    for (const o of cons.objs) if (o.trace && o.trace.length && !o.style.hidden && (!st.only || st.only.has(o.name))) this.drawTrace(o, cons);
     for (const o of sorted) {
       const g = {};
       const style = this.styleOf(o, cons);
@@ -121,7 +134,7 @@ export class Renderer {
       o._g = g;
     }
     for (const o of sorted) if (o._g && !o.style.hidden && this.wantsLabel(o)) this.drawLabel(o, this.styleOf(o, cons));
-    for (const o of cons.objs) if (o.val.t === 'num' && o.style.slider && o.style.slider.show && !o.style.hidden) this.drawSlider(o, cons, st);
+    for (const o of cons.objs) if (o.val.t === 'num' && o.style.slider && o.style.slider.show && !o.style.hidden && (!st.only || st.only.has(o.name))) this.drawSlider(o, cons, st);
     if (st.preview) for (const pv of st.preview) this.drawValue(pv.val, { ...pv.style, color: pv.style.color || T.preview, preview: true }, {}, 0, null);
     if (st.rubber) {
       const r = st.rubber;
@@ -262,6 +275,11 @@ export class Renderer {
         const r = clip(v, x0, y0, dx, dy, val.t === 'line' ? -Infinity : 0, val.t === 'line' || val.t === 'ray' ? Infinity : 1);
         if (!r) return;
         this.polylines([r], st, g, hl);
+        if (o && o.style.ticks && val.t !== 'line' && val.t !== 'ray') {
+          c.strokeStyle = st.color; c.lineWidth = 1.6; c.beginPath();
+          for (const t of tickMarks(r, o.style.ticks)) { c.moveTo(t[0], t[1]); c.lineTo(t[2], t[3]); }
+          c.stroke();
+        }
         if (val.t === 'vec') {
           const ex = x0 + dx, ey = y0 + dy, L = hypot(dx, dy);
           if (L > 1) {
@@ -440,6 +458,9 @@ export class Renderer {
       c.fillStyle = hexA(st.color, st.fill); path(); c.fill();
       if (hl) { c.strokeStyle = hexA(st.color, hl + 0.2); c.lineWidth = st.width + 5; path(); c.stroke(); }
       c.strokeStyle = st.color; c.lineWidth = st.width; path(); c.stroke();
+      if (!right && o && o.style.arcs > 1) {
+        for (let i = 1; i < o.style.arcs; i++) { c.beginPath(); c.arc(sx, sy, R - 4 * i, -a0, -(a0 + sw), true); c.stroke(); }
+      }
       if (right) { const m = a0 + sw / 2; c.fillStyle = st.color; c.beginPath(); c.arc(sx + cos(m) * R * 0.36, sy - sin(m) * R * 0.36, 1.6, 0, 2 * PI); c.fill(); }
     }
   }
@@ -507,14 +528,34 @@ export class Renderer {
     else return;
     x += off[0]; y += off[1];
     const text = this.labelText(o);
-    c.font = `${o.style.fontSize || 14}px system-ui, sans-serif`;
-    c.textAlign = align; c.textBaseline = 'alphabetic';
-    c.lineWidth = 3; c.strokeStyle = hexA(this.theme.bg, 0.85); c.lineJoin = 'round';
-    c.strokeText(text, x, y);
-    c.fillStyle = st.color;
-    c.fillText(text, x, y);
-    const w = c.measureText(text).width;
-    g.label = [align === 'center' ? x - w / 2 : x, y - 14, w, 18];
+    const w = this.drawRich(text, x, y, align, o.style.fontSize || 14, st.color);
+    g.label = [align === 'center' ? x - w / 2 : align === 'right' ? x - w : x, y - 14, w, 18];
+  }
+
+  // Label text with A_1 / A_{12} drawn as real subscripts. Returns the width.
+  drawRich(text, x, y, align, size, color) {
+    const c = this.ctx;
+    const parts = [];
+    let last = 0;
+    for (const m of text.matchAll(/_\{([^}]*)\}|_([A-Za-z0-9α-ωΑ-Ω]+)/g)) {
+      if (m.index > last) parts.push([text.slice(last, m.index), false]);
+      parts.push([m[1] ?? m[2], true]);
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) parts.push([text.slice(last), false]);
+    const font = sub => `${sub ? Math.round(size * 0.72) : size}px system-ui, sans-serif`;
+    const widths = parts.map(([s, sub]) => { c.font = font(sub); return c.measureText(s).width; });
+    const total = widths.reduce((a, b) => a + b, 0);
+    let cx = align === 'center' ? x - total / 2 : align === 'right' ? x - total : x;
+    c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+    c.lineWidth = 3; c.strokeStyle = hexA(this.theme.bg, 0.85); c.lineJoin = 'round'; c.fillStyle = color;
+    parts.forEach(([s, sub], i) => {
+      c.font = font(sub);
+      const yy = sub ? y + size * 0.28 : y;
+      c.strokeText(s, cx, yy); c.fillText(s, cx, yy);
+      cx += widths[i];
+    });
+    return total;
   }
 
   drawSlider(o, cons, st) {

@@ -68,6 +68,20 @@ const ICON = {
   showlabel: svg(dot(8, 16, 3) + txt(11, 11, 'A', 10) + ln('M3 21h18')),
   showhide: svg(ln('M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6z') + '<circle cx="12" cy="12" r="3" class="s"/>'),
   delete: svg(ln('M5 5l14 14M19 5L5 19')),
+  center: svg(ln('M3 20L12 4l9 16z') + dot(12, 14, 2.8) + dash('M3 20L12 14M21 20L12 14M12 4v10')),
+  foot: svg(ln('M2 19h20') + dash('M12 5v14') + ln('M12 15h4v4') + dot(12, 5) + dot(12, 19)),
+  excircle: svg(ln('M2 9L9 3l3 8z') + '<circle cx="13" cy="15.5" r="6.3" class="s"/>' + dot(13, 15.5, 1.8)),
+  ninepoint: svg(ln('M3 21L11 3l10 18z') + '<circle cx="12" cy="15" r="5" class="s" stroke-dasharray="2 1.8"/>' + dot(7, 12, 1.6) + dot(16, 12, 1.6) + dot(12, 20, 1.6)),
+  eulerline: svg(ln('M3 20L10 3l11 17z') + dash('M2 4L22 22') + dot(8, 9.4, 1.8) + dot(11.5, 12.6, 1.8) + dot(14.5, 15.3, 1.8)),
+  radical: svg('<circle cx="7" cy="12" r="5.5" class="s"/><circle cx="16" cy="12" r="6" class="s"/>' + ln('M11.3 2v20')),
+  commontangent: svg('<circle cx="6" cy="14" r="3.5" class="s"/><circle cx="16.5" cy="13" r="5.5" class="s"/>' + ln('M1 9.5l22-3.5')),
+  isogonal: svg(ln('M2 21L9 3l13 18z') + dash('M9 3l2 13M9 3l3 9') + dot(11, 16, 1.9) + dot(12, 12, 1.9)),
+  spiral: svg(ln('M12 12a2 2 0 0 1 4 0 4 4 0 0 1-8 0 6 6 0 0 1 12 0 8 8 0 0 1-8 8') + dot(12, 12, 1.8)),
+  harmonic: svg(ln('M1 15h22') + dot(3, 15) + dot(9, 15) + dot(13, 15) + dot(21, 15) + txt(5, 9, '−1', 8)),
+  arcmid: svg('<circle cx="12" cy="10" r="7.5" class="s"/>' + ln('M5 13h14') + dot(12, 17.5, 3) + dot(5, 13) + dot(19, 13)),
+  antipode: svg('<circle cx="12" cy="12" r="8" class="s"/>' + dash('M6.3 6.3l11.4 11.4') + dot(6.3, 6.3) + dot(17.7, 17.7) + dot(12, 12, 1.5)),
+  relation: svg(ln('M4 7h7M4 12h7') + ln('M14 12l3 3 5-7') + txt(4, 21, '≟', 9)),
+  marks: svg(ln('M3 18L21 6M10 10l2 3M12.5 8.5l2 3')),
   zoomin: svg('<circle cx="10" cy="10" r="6.5" class="s"/>' + ln('M15 15l6 6M7 10h6M10 7v6')),
   zoomout: svg('<circle cx="10" cy="10" r="6.5" class="s"/>' + ln('M15 15l6 6M7 10h6')),
 };
@@ -111,6 +125,24 @@ export const TOOLS = [
   { id: 'locus', group: 'special', name: 'Locus', help: 'Select the locus point, then the point on a path (or slider) that drives it', patterns: [['pt', 'pt'], ['pt', 'num']],
     make: one('line', s => `Locus(${s[0]}, ${s[1]})`) },
 
+  { id: 'center', group: 'olympiad', name: 'Triangle Centre', help: 'Select three vertices, then pick the centre (incentre, orthocentre, X(n)…)', patterns: PT3,
+    prompt: { label: 'Centre', options: 'centers' }, make: 'center' },
+  { id: 'foot', group: 'olympiad', name: 'Foot of Perpendicular', help: 'Select a point and a line', patterns: [['pt', 'lin'], ['lin', 'pt']],
+    make: (s, N, ctx, x, pi) => { const [P, l] = pi ? [s[1], s[0]] : s; const F = N('pt'); return [{ name: F, src: `Foot(${P}, ${l})` }, { name: N('seg'), src: `Segment(${P}, ${F})`, style: { dash: 1, width: 1.5 } }]; }, preview: true },
+  { id: 'excircle', group: 'olympiad', name: 'Excircle', help: 'Select the vertex the excircle is opposite to, then the other two', patterns: PT3,
+    make: (s, N) => [{ name: N('pt', /^[A-Z]$/.test(s[0]) ? `I_${s[0]}` : undefined), src: `Excenter(${s.join(', ')})` }, { name: N('line'), src: `Excircle(${s.join(', ')})` }], preview: true },
+  { id: 'ninepoint', group: 'olympiad', name: 'Nine-Point Circle', help: 'Select three vertices', patterns: PT3, make: one('line', s => `NinePointCircle(${s.join(', ')})`), preview: true },
+  { id: 'eulerline', group: 'olympiad', name: 'Euler Line', help: 'Select three vertices', patterns: PT3, make: one('line', s => `EulerLine(${s.join(', ')})`), preview: true },
+  { id: 'arcmid', group: 'olympiad', name: 'Arc Midpoint', help: 'Select a vertex A, then B and C: midpoint of arc BC not containing A', patterns: PT3, make: one('pt', s => `ArcMidpoint(${s.join(', ')})`), preview: true },
+  { id: 'antipode', group: 'olympiad', name: 'Antipode', help: 'Select a point and a circle', patterns: [['pt', 'carc'], ['carc', 'pt']],
+    make: (s, N, ctx, x, pi) => [{ name: N('pt'), src: `Antipode(${pi ? s[1] : s[0]}, ${pi ? s[0] : s[1]})` }] },
+  { id: 'radical', group: 'olympiad', name: 'Radical Axis', help: 'Select two circles', patterns: [['circ', 'circ']], make: one('line', s => `RadicalAxis(${s.join(', ')})`) },
+  { id: 'commontangent', group: 'olympiad', name: 'Common Tangents', help: 'Select two circles', patterns: [['circ', 'circ']], make: 'commontangent' },
+  { id: 'isogonal', group: 'olympiad', name: 'Isogonal Conjugate', help: 'Select the point, then the three vertices', patterns: [['pt', 'pt', 'pt', 'pt']], make: one('pt', s => `IsogonalConjugate(${s.join(', ')})`), preview: true },
+  { id: 'spiral', group: 'olympiad', name: 'Spiral Similarity Centre', help: 'Select A, B, then their images C, D', patterns: [['pt', 'pt', 'pt', 'pt']], make: one('pt', s => `SpiralCenter(${s.join(', ')})`), preview: true },
+  { id: 'harmonic', group: 'olympiad', name: 'Harmonic Conjugate', help: 'Select A, B, then C: D on AB with (A, B; C, D) = −1', patterns: PT3, make: one('pt', s => `HarmonicConjugate(${s.join(', ')})`), preview: true },
+  { id: 'relation', group: 'olympiad', name: 'Check Relation', key: 'q', help: 'Select 2–4 objects: collinear, concyclic, concurrent, tangent, equal… and whether it always holds', special: 'relation' },
+
   { id: 'polygon', group: 'polygons', name: 'Polygon', key: 'g', help: 'Select vertices; click the first one again to close', special: 'polygon' },
   { id: 'regpolygon', group: 'polygons', name: 'Regular Polygon', help: 'Select two points, then enter the number of vertices', patterns: PT2,
     prompt: { label: 'Vertices', def: '6' }, make: 'regpolygon' },
@@ -136,7 +168,7 @@ export const TOOLS = [
 
   { id: 'angle', group: 'measure', name: 'Angle', key: 'a', help: 'Select three points (vertex second), two lines, or a polygon', patterns: [['pt', 'pt', 'pt'], ['lin', 'lin'], ['poly']], make: 'angle' },
   { id: 'anglesize', group: 'measure', name: 'Angle with Given Size', help: 'Select a leg point and the vertex, then enter the size', patterns: PT2, prompt: { label: 'Angle (degrees, counter-clockwise)', def: '45°' },
-    make: (s, N, ctx, x) => { const B = prime(s[0], N, 'pt'); return [{ name: B, src: `Rotate(${s[0]}, ${x}, ${s[1]})` }, { name: N('angle'), src: `Angle(${s[0]}, ${s[1]}, ${B})` }]; } },
+    make: (s, N, ctx, x) => { const B = prime(s[0], N, 'pt'); return [{ name: B, src: `Rotate(${s[0]}, ${x}, ${s[1]})` }, { name: N('angle'), src: `OrientedAngle(${s[0]}, ${s[1]}, ${B})` }]; } },
   { id: 'distance', group: 'measure', name: 'Distance or Length', key: 'd', help: 'Select two points, a point and a line, or a segment, polygon or circle',
     patterns: [['pt', 'pt'], ['pt', 'lin'], ['lin', 'pt'], ['seg'], ['poly'], ['carc']], make: 'distance' },
   { id: 'area', group: 'measure', name: 'Area', help: 'Select a polygon, circle, sector or ellipse', patterns: [['poly'], ['carc'], ['conic']],
@@ -169,7 +201,7 @@ export const TOOLS = [
 ];
 
 export const GROUPS = [
-  ['move', 'Move'], ['points', 'Points'], ['lines', 'Lines'], ['special', 'Constructions'], ['polygons', 'Polygons'],
+  ['move', 'Move'], ['points', 'Points'], ['lines', 'Lines'], ['special', 'Constructions'], ['olympiad', 'Olympiad'], ['polygons', 'Polygons'],
   ['circles', 'Circles & arcs'], ['conics', 'Conics'], ['measure', 'Measure'], ['transform', 'Transform'],
   ['functions', 'Functions'], ['other', 'Slider, text & view'],
 ];

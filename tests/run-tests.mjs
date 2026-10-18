@@ -3,6 +3,7 @@
 import { parseStatement, parseExpr, print } from '../js/expr.js';
 import { describe as desc, intersections, conicInfo } from '../js/geom.js';
 import { Construction } from '../js/construction.js';
+import { relations } from '../js/olympiad.js';
 
 let pass = 0, fail = 0;
 const near = (a, b, e = 1e-6) => Math.abs(a - b) <= e * (1 + Math.abs(b));
@@ -215,5 +216,81 @@ t('wrong arguments explain usage', () => {
   ok(/Circle\(A, r\)/.test(msg), msg);
 });
 
+t('Angle is non-reflex, OrientedAngle is counter-clockwise', () => {
+  const c = cons(['A = (1, 0)', 'B = (0, 0)', 'C = (0, 1)', 'p = Angle(C, B, A)', 'q = OrientedAngle(C, B, A)', 'r = OrientedAngle(A, B, C)']);
+  ok(near(val(c, 'p').v, Math.PI / 2) && near(val(c, 'q').v, 3 * Math.PI / 2) && near(val(c, 'r').v, Math.PI / 2));
+});
+// ---- olympiad ----
+const T = ['A = (0.3, 0.2)', 'B = (7, 0.9)', 'C = (2.1, 5.3)'];
+const P_ = (c, n) => val(c, n);
+const d2 = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
+t('nine-point centre is the midpoint of O and H', () => {
+  const c = cons([...T, 'O = Circumcenter(A, B, C)', 'H = Orthocenter(A, B, C)', 'N = NinePointCenter(A, B, C)', 'M = Midpoint(O, H)']);
+  ok(d2(P_(c, 'N'), P_(c, 'M')) < 1e-9);
+});
+t('Euler line: centroid on OH, HG = 2 GO', () => {
+  const c = cons([...T, 'O = TriangleCenter(A, B, C, 3)', 'H = TriangleCenter(A, B, C, 4)', 'G = Centroid(A, B, C)', 'e = EulerLine(A, B, C)', 'b = AreCollinear(O, G, H)']);
+  eq(val(c, 'b').v, true); ok(near(d2(P_(c, 'H'), P_(c, 'G')), 2 * d2(P_(c, 'G'), P_(c, 'O'))));
+});
+t('Feuerbach point lies on incircle and nine-point circle', () => {
+  const c = cons([...T, 'F = FeuerbachPoint(A, B, C)', 'i = Incircle(A, B, C)', 'n = NinePointCircle(A, B, C)', 'p = IsOn(F, i)', 'q = IsOn(F, n)', 't1 = AreTangent(i, n)']);
+  eq(val(c, 'p').v, true); eq(val(c, 'q').v, true); eq(val(c, 't1').v, true);
+});
+t('excircle is tangent to all three side lines', () => {
+  const c = cons([...T, 'ea = Excircle(A, B, C)', 'k1 = AreTangent(ea, Line(B, C))', 'k2 = AreTangent(ea, Line(A, B))', 'k3 = AreTangent(ea, Line(A, C))']);
+  eq(val(c, 'k1').v && val(c, 'k2').v && val(c, 'k3').v, true);
+});
+t('Gergonne point: cevians to the intouch points concur', () => {
+  const c = cons([...T, 'Ge = GergonnePoint(A, B, C)', 'it = IntouchTriangle(A, B, C)', 'u = AreCollinear(A, Ge, Vertex(it, 1))', 'v = AreCollinear(B, Ge, Vertex(it, 2))']);
+  eq(val(c, 'u').v && val(c, 'v').v, true);
+});
+t('isogonal conjugate of the centroid is the symmedian point', () => {
+  const c = cons([...T, 'K = SymmedianPoint(A, B, C)', 'G = Centroid(A, B, C)', 'K2 = IsogonalConjugate(G, A, B, C)']);
+  ok(d2(P_(c, 'K'), P_(c, 'K2')) < 1e-9);
+});
+t('Simson line: feet are collinear exactly for P on the circumcircle', () => {
+  const c = cons([...T, 'k = Circumcircle(A, B, C)', 'P = Point(k, 0.37)', 'pt = PedalTriangle(P, A, B, C)', 's = Area(pt)']);
+  ok(Math.abs(val(c, 's').v) < 1e-9);
+});
+t('Fermat point sees every side at 120°', () => {
+  const c = cons([...T, 'F = FermatPoint(A, B, C)', 'α = Angle(A, F, B)', 'β = Angle(B, F, C)']);
+  ok(near(val(c, 'α').v * 180 / Math.PI, 120) && near(val(c, 'β').v * 180 / Math.PI, 120));
+});
+t('radical centre has equal power to three circles', () => {
+  const c = cons(['k1 = Circle((0, 0), 2)', 'k2 = Circle((5, 1), 3)', 'k3 = Circle((2, 6), 1.5)', 'X = RadicalCenter(k1, k2, k3)', 'p1 = Power(X, k1)', 'p2 = Power(X, k2)', 'p3 = Power(X, k3)']);
+  ok(near(val(c, 'p1').v, val(c, 'p2').v) && near(val(c, 'p2').v, val(c, 'p3').v));
+});
+t('four common tangents of disjoint circles', () => {
+  const c = cons(['k1 = Circle((0, 0), 1)', 'k2 = Circle((6, 0), 2)', ...[1, 2, 3, 4].map(n => `t${n} = CommonTangent(k1, k2, ${n})`), ...[1, 2, 3, 4].map(n => `q${n} = AreTangent(t${n}, k2)`)]);
+  eq([1, 2, 3, 4].every(n => val(c, `q${n}`).v === true), true);
+});
+t('spiral similarity centre maps A→C, B→D', () => {
+  const c = cons(['A = (0, 0)', 'B = (2, 0)', 'C = (3, 1)', 'D = (3, 3)', 'S = SpiralCenter(A, B, C, D)', 'r1 = Distance(S, C) / Distance(S, A)', 'r2 = Distance(C, D) / Distance(A, B)']);
+  ok(near(val(c, 'r1').v, val(c, 'r2').v));
+});
+t('Miquel point lies on all four circumcircles', () => {
+  const c = cons(['l1 = Line((0, 0), (5, 1))', 'l2 = Line((0, 0), (1, 4))', 'l3 = Line((4, 0), (0, 3))', 'l4 = Line((6, 0), (0, 2))', 'M = MiquelPoint(l1, l2, l3, l4)',
+    'k = Circle(Intersect(l1, l3, 1), Intersect(l3, l4, 1), Intersect(l1, l4, 1))', 'b = IsOn(M, k)']);
+  eq(val(c, 'b').v, true);
+});
+t('harmonic conjugate gives cross ratio −1', () => {
+  const c = cons(['A = (0, 0)', 'B = (6, 0)', 'C = (2, 0)', 'D = HarmonicConjugate(A, B, C)', 'r = CrossRatio(A, B, C, D)']);
+  ok(near(val(c, 'D').x, -6) && near(val(c, 'r').v, -1));
+});
+t('arc midpoint is on the A-bisector', () => {
+  const c = cons([...T, 'M = ArcMidpoint(A, B, C)', 'I = Incenter(A, B, C)', 'b = AreCollinear(A, I, M)', 'e = AreEqual(Distance(M, B), Distance(M, I))']);
+  eq(val(c, 'b').v && val(c, 'e').v, true);
+});
+t('relation finder: generality test sees a theorem', () => {
+  const c = cons([...T, 'G = Centroid(A, B, C)', 'H = Orthocenter(A, B, C)', 'O = Circumcenter(A, B, C)']);
+  const r = relations(['O', 'G', 'H'].map(n => c.get(n)));
+  ok(r[0].holds && /collinear/.test(r[0].text));
+});
+
+t('relation finder: incentre–excentre lemma MB = MI holds always', () => {
+  const c = cons([...T, 'M = ArcMidpoint(A, B, C)', 'I = Incenter(A, B, C)']);
+  const r = relations(['M', 'B', 'I'].map(n => c.get(n)));
+  ok(r.some(x => x.holds && x.text === 'MB = MI'), JSON.stringify(r.map(x => [x.text, x.holds])));
+});
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

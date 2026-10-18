@@ -973,8 +973,11 @@ function centroid(ps) {
   }
   return P(cx / (6 * A), cy / (6 * A));
 }
-function angleV(c, a0, a1, reflex) {
+// Oriented: counter-clockwise from a0 to a1, 0–360°. Otherwise the
+// non-reflex angle (≤ 180°), which is what ∠ABC means in a proof.
+function angleV(c, a0, a1, oriented) {
   let sw = normAng(a1 - a0);
+  if (!oriented && sw > PI + 1e-12) { a0 = a1; sw = 2 * PI - sw; }
   return num(sw, { deg: true, arc: { c: P(c.x, c.y), a0, sw } });
 }
 function simpson(f, a, b, n = 2000) {
@@ -1278,22 +1281,26 @@ def('Focus', 'Focus(conic, n)', a => {
   }
   return UNDEF;
 });
-def('Angle', 'Angle(A, B, C), Angle(line, line), Angle(vector), Angle(A, B, α)', (a, ctx) => {
-  if (sig(a, 'pt', 'pt', 'pt')) {
-    if (dist(a[0], a[1]) === 0 || dist(a[2], a[1]) === 0) return UNDEF;
-    return angleV(a[1], ang(sub(a[0], a[1])), ang(sub(a[2], a[1])));
-  }
-  if (sig(a, 'lin', 'lin')) {
-    const X = ll({ ...a[0], t: 'line' }, { ...a[1], t: 'line' })[0];
-    const A = lin(a[0]), B = lin(a[1]);
-    if (!X) return num(0, { deg: true });
-    return angleV(X, ang(A.d), ang(B.d));
-  }
-  if (sig(a, 'vec', 'vec')) return angleV(a[0].o || P(0, 0), ang(a[0]), ang(a[1]));
-  if (sig(a, 'vec') || sig(a, 'pt')) return angleV(a[0].o || P(0, 0), 0, ang(a[0]));
-  if (sig(a, 'num')) return num(a[0].v, { deg: true });
-  return null;
-});
+function angleCmd(oriented) {
+  return a => {
+    if (sig(a, 'pt', 'pt', 'pt')) {
+      if (dist(a[0], a[1]) === 0 || dist(a[2], a[1]) === 0) return UNDEF;
+      return angleV(a[1], ang(sub(a[0], a[1])), ang(sub(a[2], a[1])), oriented);
+    }
+    if (sig(a, 'lin', 'lin')) {
+      const X = ll({ ...a[0], t: 'line' }, { ...a[1], t: 'line' })[0];
+      const A = lin(a[0]), B = lin(a[1]);
+      if (!X) return num(0, { deg: true });
+      return angleV(X, ang(A.d), ang(B.d), oriented);
+    }
+    if (sig(a, 'vec', 'vec')) return angleV(a[0].o || P(0, 0), ang(a[0]), ang(a[1]), oriented);
+    if (sig(a, 'vec') || sig(a, 'pt')) return angleV(a[0].o || P(0, 0), 0, ang(a[0]), true);
+    if (sig(a, 'num')) return num(a[0].v, { deg: true });
+    return null;
+  };
+}
+def('Angle', 'Angle(A, B, C) — ∠ABC, at most 180°; Angle(line, line), Angle(vector)', angleCmd(false));
+def('OrientedAngle', 'OrientedAngle(A, B, C) — counter-clockwise from BA to BC, 0–360°', angleCmd(true));
 def('Distance', 'Distance(A, B), Distance(A, line)', (a, ctx) => {
   if (sig(a, 'pt', 'pt')) return anchor(num(dist(a[0], a[1])), mid(a[0], a[1]));
   const pp = a[0] && a[0].t === 'pt' ? [a[0], a[1]] : [a[1], a[0]];
@@ -1510,3 +1517,6 @@ export function describe(v, digits = 2) {
   }
   return null;
 }
+
+// Shared with js/olympiad.js, which registers more commands into the table.
+export { def, sig, is, lin, lineV, anchor, toPt, ll, cc, lc, lineFromCoef, tangentsConic, conicMatrix, qform, circle3, polygonArea, centroid, angleV, P };

@@ -4,6 +4,7 @@
 
 import { parseStatement, parseExpr, print, names as astNames, rename as astRename, clone, VARS } from './expr.js';
 import { evaluate, UNDEF, EvalError, pathInfo, closest, DEFAULT_BOUNDS, isPath } from './geom.js';
+import './olympiad.js';
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWZ';
 const LOWER = 'fghpqrsklmnabcdtuvwz'.split('');
@@ -165,7 +166,7 @@ export class Construction {
     for (const o of this.objs) {
       if (dirty && !dirty.has(o.name)) continue;
       try { o.val = evaluate(o.ast, ctx); } catch { o.val = UNDEF; }
-      if (o.style.trace && o.val.t === 'pt') {
+      if (o.style.trace && o.val.t === 'pt' && !this.noTrace) {
         const tr = (o.trace ||= []), last = tr[tr.length - 1];
         if (!last || last.x !== o.val.x || last.y !== o.val.y) tr.push({ x: o.val.x, y: o.val.y });
       }

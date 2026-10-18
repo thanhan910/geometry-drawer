@@ -6,6 +6,8 @@ import { describe, toText, intersections, closest, conicInfo, isPath, isLinear, 
 import { Construction, kindOf, isPtLit, isNumLit } from './construction.js';
 import { Renderer, THEMES, role, defaultLabelMode } from './render.js';
 import { TOOLS, TOOL, GROUPS, prime } from './tools.js';
+import { CENTER_LIST, relations } from './olympiad.js';
+import { exportDiagram } from './export.js';
 
 const $ = s => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
@@ -57,7 +59,7 @@ let raf = 0, algebraValuesDirty = false;
 function render() { if (!raf) raf = requestAnimationFrame(frame); }
 function frame() {
   raf = 0;
-  R.draw(cons, { selection: S.selection, hover: S.hover, preview: S.preview, toolSel: S.tsel, rubber: S.rubber, showHidden: S.tool === 'showhide' });
+  R.draw(cons, { selection: S.selection, hover: S.hover, preview: S.preview, toolSel: S.tsel, rubber: S.rubber, showHidden: S.tool === 'showhide', only: stepSet() });
   if (algebraValuesDirty) { algebraValuesDirty = false; updateAlgebraValues(); }
 }
 function viewChanged() {
@@ -79,6 +81,7 @@ const snapshot = () => JSON.stringify(cons.toJSON());
 function commit() {
   const s = snapshot();
   if (S.history[S.hidx] !== s) {
+    if (S.step != null && S.history[S.hidx] !== undefined) exitSteps();
     S.history = S.history.slice(0, S.hidx + 1);
     S.history.push(s);
     if (S.history.length > 400) S.history.shift();
@@ -243,6 +246,7 @@ function setTool(id) {
   renderToolbar();
   hint();
   canvas.style.cursor = id === 'move' ? 'default' : 'crosshair';
+  showRelations();
   refreshProps();
   render();
 }
@@ -298,7 +302,13 @@ function normalizePrompt(tool, x) {
 
 async function finish(tool, sel, pi) {
   let x = null;
-  if (tool.prompt) {
+  if (tool.prompt && tool.prompt.options === 'centers') {
+    const r = await ask(tool.name, [{ key: 'v', label: tool.prompt.label, type: 'select', value: S.lastPrompt?.[tool.id] ?? '1',
+      options: CENTER_LIST.map(([n, name]) => [String(n), `X(${n}) ${name.replace(/([a-z])([A-Z])/g, '$1 $2')}`]) }]);
+    if (!r) { resetTool(); hint(); return; }
+    x = r.v;
+    (S.lastPrompt ||= {})[tool.id] = x;
+  } else if (tool.prompt) {
     x = await ask(tool.name, [{ key: 'v', label: tool.prompt.label, value: S.lastPrompt?.[tool.id] ?? tool.prompt.def }]);
     if (!x) { resetTool(); hint(); return; }
     x = normalizePrompt(tool, x.v);
@@ -331,6 +341,21 @@ function buildItems(tool, sel, pi, N, x) {
       const n = intersections(val(a), val(b), cons.bounds).length;
       if (!n) { toast('These objects do not intersect here'); return [[], null]; }
       return [Array.from({ length: Math.min(n, 12) }, (_, k) => ({ name: N('pt'), src: `Intersect(${a}, ${b}, ${k + 1})` })), null];
+    }
+    case 'center': {
+      const n = +x, name = (CENTER_LIST.find(c => c[0] === n) || [])[1];
+      const hint = { 1: 'I', 2: 'G', 3: 'O', 4: 'H', 5: 'N', 6: 'K', 7: 'Ge', 8: 'Na', 9: 'Mi', 10: 'Sp', 11: 'Fe', 13: 'F', 14: 'F_2', 20: 'L', 40: 'Be' }[n];
+      const src = n === 2 ? `Centroid(${sel.join(', ')})` : `${name}(${sel.join(', ')})`;
+      return [[{ name: N('pt', hint), src }], null];
+    }
+    case 'commontangent': {
+      const items = [];
+      for (const k of [1, 2, 3, 4]) {
+        const v = tryVal(`CommonTangent(${sel[0]}, ${sel[1]}, ${k})`);
+        if (v && v.t !== 'undef') items.push({ name: N('line'), src: `CommonTangent(${sel[0]}, ${sel[1]}, ${k})` });
+      }
+      if (!items.length) toast('These circles have no common tangent');
+      return [items, null];
     }
     case 'tangent': {
       const [P, c] = val(sel[0]).t === 'pt' ? sel : [sel[1], sel[0]];
@@ -370,7 +395,7 @@ function buildItems(tool, sel, pi, N, x) {
       const V = k => `Vertex(${sel[0]}, ${((k - 1 + n) % n) + 1})`;
       return [Array.from({ length: n }, (_, i) => {
         const k = i + 1;
-        return { name: N('angle'), src: area > 0 ? `Angle(${V(k + 1)}, ${V(k)}, ${V(k - 1)})` : `Angle(${V(k - 1)}, ${V(k)}, ${V(k + 1)})` };
+        return { name: N('angle'), src: area > 0 ? `OrientedAngle(${V(k + 1)}, ${V(k)}, ${V(k - 1)})` : `OrientedAngle(${V(k - 1)}, ${V(k)}, ${V(k + 1)})` };
       }), null];
     }
     case 'distance': {
@@ -448,6 +473,14 @@ const SPECIAL = {
     cons.remove([hits[0].o.name]);
     commit();
   },
+  relation(tool, sx, sy, hits) {
+    const h = hits.find(x => x.o.val.t !== 'text');
+    if (!h) { S.tsel = []; showRelations(); render(); return; }
+    const n = h.o.name;
+    if (S.tsel.includes(n)) S.tsel = S.tsel.filter(x => x !== n);
+    else { if (S.tsel.length >= 4) S.tsel = []; S.tsel.push(n); }
+    showRelations(); render();
+  },
   zoomin(tool, sx, sy) { view.zoomAt(sx, sy, 1.6); viewChanged(); },
   zoomout(tool, sx, sy) { view.zoomAt(sx, sy, 1 / 1.6); viewChanged(); },
 };
@@ -512,6 +545,9 @@ let drag = null;
 const local = e => { const r = canvas.getBoundingClientRect(); return { sx: e.clientX - r.left, sy: e.clientY - r.top }; };
 
 canvas.addEventListener('pointerdown', e => {
+  // Hit testing reads geometry cached by the last frame: flush a pending one
+  // so a click right after a change sees what was just created.
+  if (raf) { cancelAnimationFrame(raf); frame(); }
   canvas.setPointerCapture(e.pointerId);
   const p = local(e);
   pointers.set(e.pointerId, p);
@@ -840,6 +876,7 @@ function refreshAlgebra() {
     list.append(row);
     rows.set(o.name, { row, head, sub, dot: dotB, slider });
   }
+  refreshAlgebraFuture();
 }
 function updateAlgebraValues() {
   for (const [n, r] of rows) {
@@ -1030,6 +1067,16 @@ function refreshProps() {
     const seg = el('div', { class: 'seg' });
     ['Solid', 'Dashed', 'Dotted'].forEach((l, i) => seg.append(el('button', { class: (st.dash || 0) === i ? 'on' : '', onclick: () => setAll('dash', i || undefined) }, l)));
     box.append(el('div', { class: 'pl' }, el('span', {}, 'Line'), seg));
+    if (o.val.t === 'seg' || o.val.t === 'vec') {
+      const m = el('div', { class: 'seg' });
+      ['None', '|', '||', '|||'].forEach((l, i) => m.append(el('button', { class: (o.style.ticks || 0) === i ? 'on' : '', title: i ? `${i} tick mark${i > 1 ? 's' : ''} (equal lengths)` : 'No marks', onclick: () => setAll('ticks', i || undefined) }, l)));
+      box.append(el('div', { class: 'pl' }, el('span', {}, 'Marks'), m));
+    }
+    if (o.val.t === 'num' && o.val.arc) {
+      const m = el('div', { class: 'seg' });
+      ['1 arc', '2', '3'].forEach((l, i) => m.append(el('button', { class: (o.style.arcs || 1) === i + 1 ? 'on' : '', title: 'Arcs mark equal angles', onclick: () => setAll('arcs', i ? i + 1 : undefined) }, l)));
+      box.append(el('div', { class: 'pl' }, el('span', {}, 'Marks'), m));
+    }
   }
   if (['poly', 'circle', 'arc', 'conic'].includes(o.val.t) || (o.val.t === 'num' && (o.val.arc || o.val.shade))) box.append(range('Fill', 'fill', 0, 1, 0.05, st.fill));
   if (o.val.t === 'text') box.append(range('Font size', 'fontSize', 10, 48, 1, st.fontSize));
@@ -1102,6 +1149,7 @@ function ask(title, fields) {
     for (const f of fields) {
       let inp;
       if (f.type === 'checkbox') inp = el('input', { type: 'checkbox' });
+      else if (f.type === 'select') inp = el('select', {}, ...f.options.map(([v, l]) => el('option', { value: v, selected: v === f.value }, l)));
       else if (f.type === 'textarea') inp = el('textarea', { rows: 3, spellcheck: 'false' }, f.value || '');
       else inp = el('input', { value: f.value ?? '', spellcheck: 'false', autocomplete: 'off' });
       inputs[f.key] = inp;
@@ -1143,16 +1191,22 @@ function openMenu() {
   const check = (label, k) => m.append(el('label', { class: 'mi' }, el('span', {}, label),
     el('input', { type: 'checkbox', checked: S.settings[k], onchange: ev => { S.settings[k] = ev.target.checked; saveSettings(); if (k === 'showAux') refreshAlgebra(); render(); } })));
   const choice = (label, k, opts) => m.append(el('label', { class: 'mi' }, el('span', {}, label),
-    el('select', { onchange: ev => { const v = ev.target.value; S.settings[k] = /^\d+$/.test(v) ? +v : v; saveSettings(); if (k === 'theme') applyTheme(); refreshAlgebra(); viewChanged(); } },
+    el('select', { onchange: ev => { const v = ev.target.value; if (k === '__template') { closeMenu(); if (v) applyTemplate(v); return; } S.settings[k] = /^\d+$/.test(v) ? +v : v; saveSettings(); if (k === 'theme') applyTheme(); refreshAlgebra(); viewChanged(); } },
       ...opts.map(([v, l]) => el('option', { value: v, selected: String(S.settings[k]) === String(v) }, l)))));
   item('New', newDoc);
   item('Open file…', () => $('#file').click(), 'Ctrl+O');
   item('Save file', saveFile, 'Ctrl+S');
   item('Export PNG', exportPng);
+  item('Export Asymptote / TikZ…', () => showExport('asy'));
   item('Copy share link', shareLink);
+  m.append(el('hr'));
+  item('Step through construction', enterSteps);
+  choice('New from template', '__template', [['', 'Choose…'], ...Object.keys(TEMPLATES).map(k => [k, k])]);
   m.append(el('hr'));
   item('Fit all objects', fitAll, 'F');
   item('Standard view', standardView, '0');
+  m.append(el('label', { class: 'mi' }, el('span', {}, 'Clean diagram (no axes or grid)'),
+    el('input', { type: 'checkbox', checked: !S.settings.grid && !S.settings.axes, onchange: ev => { S.settings.grid = S.settings.axes = !ev.target.checked; saveSettings(); closeMenu(); render(); } })));
   check('Grid', 'grid');
   check('Axes', 'axes');
   check('Snap to grid', 'snap');
@@ -1241,6 +1295,160 @@ function fitAll() {
   viewChanged();
 }
 
+// ---------- relation checker ----------
+
+// Drag the construction through random nearby positions and re-test each
+// relation: a theorem survives, a coincidence of this picture does not.
+function generality(names, tests, trials = 40) {
+  const free = cons.objs.filter(o => cons.isFreePoint(o) || (cons.isOnPath(o) && o.ast.a[1].k === 'num'));
+  if (!free.length) return tests.map(() => null);
+  const saved = free.map(o => JSON.stringify(o.ast));
+  const ps = free.filter(o => o.val.t === 'pt').map(o => o.val);
+  let spread = 0;
+  for (const a of ps) for (const b of ps) spread = Math.max(spread, Math.hypot(a.x - b.x, a.y - b.y));
+  if (!spread) spread = (cons.bounds.xmax - cons.bounds.xmin) / 4;
+  const counts = tests.map(() => ({ ok: 0, n: 0 }));
+  cons.noTrace = true;
+  try {
+    for (let i = 0; i < trials; i++) {
+      free.forEach((o, k) => {
+        const a = JSON.parse(saved[k]);
+        if (a.k === 'pt') {
+          const r = spread * 0.15 * Math.sqrt(Math.random()), t = Math.random() * 2 * Math.PI;
+          a.x = { k: 'num', v: o.val.x + r * Math.cos(t) }; a.y = { k: 'num', v: o.val.y + r * Math.sin(t) };
+        } else a.a[1] = { k: 'num', v: a.a[1].v + (Math.random() - 0.5) * 0.15 };
+        o.ast = a;
+      });
+      cons.recompute();
+      const vals = names.map(n => cons.get(n).val);
+      if (vals.some(v => v.t === 'undef')) continue;
+      tests.forEach((t, k) => {
+        let r = null;
+        try { r = t(vals); } catch { r = null; }
+        if (r === null) return;
+        counts[k].n++; if (r) counts[k].ok++;
+      });
+    }
+  } finally {
+    free.forEach((o, k) => { o.ast = JSON.parse(saved[k]); });
+    cons.recompute();
+    cons.noTrace = false;
+  }
+  return counts;
+}
+
+function showRelations() {
+  const box = $('#rel');
+  if (S.tool !== 'relation') { box.hidden = true; return; }
+  box.textContent = '';
+  const names = S.tsel.filter(n => cons.has(n));
+  box.append(el('div', { class: 'relh' }, el('b', {}, 'Check relation'), names.length ? ` ${names.join(', ')}` : ''));
+  if (names.length < 2) {
+    box.append(el('p', { class: 'relhint' }, names.length ? 'Pick 1 to 3 more objects.' : 'Click 2 to 4 objects: points, lines, circles, angles or lengths. Click empty space to start over.'));
+    box.hidden = false; return;
+  }
+  const rs = relations(names.map(n => cons.get(n)));
+  const shown = rs.filter((r, i) => r.holds || i === 0);
+  const counts = generality(names, shown.map(r => r.test));
+  const list = el('ul', { class: 'rels' });
+  shown.forEach((r, i) => {
+    const c = counts[i];
+    let cls, sub;
+    if (!r.holds) { cls = 'no'; sub = 'not true here'; }
+    else if (!c) { cls = 'yes'; sub = 'true (nothing free to move)'; }
+    else if (c.n && c.ok >= c.n * 0.97) { cls = 'yes'; sub = `always — held in ${c.ok} of ${c.n} random positions`; }
+    else { cls = 'here'; sub = `only in this picture — fails in ${c.n - c.ok} of ${c.n} random positions`; }
+    list.append(el('li', { class: cls }, el('span', { class: 'mark' }, cls === 'yes' ? '✓' : cls === 'here' ? '≈' : '✗'), el('div', {}, el('div', {}, r.text), el('small', {}, sub))));
+  });
+  if (!shown.length) list.append(el('li', { class: 'no' }, el('span', { class: 'mark' }, '–'), el('div', {}, 'No special relation found')));
+  box.append(list);
+  box.hidden = false;
+}
+
+// ---------- step-through ----------
+
+function steps() { return cons.objs.filter(o => !o.style.hidden && !o.style.aux); }
+function stepSet() {
+  if (S.step == null) return null;
+  const st = steps();
+  const last = st[S.step - 1];
+  const upto = last ? cons.objs.indexOf(last) : -1;
+  return new Set(cons.objs.slice(0, upto + 1).map(o => o.name));
+}
+function enterSteps() {
+  if (!steps().length) { toast('Nothing to step through yet'); return; }
+  S.step = 1; setTool('move'); renderSteps(); render();
+}
+function exitSteps() { S.step = null; clearInterval(S.stepTimer); S.stepTimer = 0; $('#steps').hidden = true; refreshAlgebraFuture(); render(); }
+function goStep(k) {
+  const n = steps().length;
+  S.step = Math.max(1, Math.min(n, k));
+  renderSteps(); render();
+}
+function renderSteps() {
+  const bar = $('#steps'), st = steps(), n = st.length, o = st[S.step - 1];
+  bar.textContent = '';
+  const b = (label, title, fn) => el('button', { class: 'ib small', title, 'aria-label': title, onclick: fn }, label);
+  bar.append(
+    b('⏮', 'First step', () => goStep(1)), b('◀', 'Previous step ([)', () => goStep(S.step - 1)),
+    el('div', { class: 'stxt' }, el('b', {}, `${S.step} / ${n}`), ' ', o ? `${o.name} = ${print(o.ast, { pretty: true, digits: S.settings.digits })}` : ''),
+    b('▶', 'Next step (])', () => goStep(S.step + 1)), b('⏭', 'Last step', () => goStep(n)),
+    b(S.stepTimer ? '❚❚' : '⏵', 'Play', () => {
+      if (S.stepTimer) { clearInterval(S.stepTimer); S.stepTimer = 0; }
+      else { if (S.step >= n) S.step = 0; S.stepTimer = setInterval(() => { if (S.step >= steps().length) { clearInterval(S.stepTimer); S.stepTimer = 0; renderSteps(); } else goStep(S.step + 1); }, 900); }
+      renderSteps();
+    }),
+    b('✕', 'Leave step mode (Esc)', exitSteps));
+  bar.hidden = false;
+  refreshAlgebraFuture();
+}
+function refreshAlgebraFuture() {
+  const only = stepSet();
+  for (const [n, r] of rows) r.row.classList.toggle('future', !!only && !only.has(n));
+}
+
+// ---------- export ----------
+
+function showExport(fmt) {
+  const dlg = $('#dlg');
+  dlg.textContent = '';
+  const ta = el('textarea', { class: 'code', readonly: true, spellcheck: 'false', rows: 16 });
+  const sel = el('select', { 'aria-label': 'Format', onchange: () => { ta.value = exportDiagram(cons, R, sel.value); } },
+    el('option', { value: 'asy', selected: fmt === 'asy' }, 'Asymptote'), el('option', { value: 'tikz', selected: fmt === 'tikz' }, 'TikZ'));
+  ta.value = exportDiagram(cons, R, fmt);
+  const form = el('form', { method: 'dialog', class: 'wide' },
+    el('h2', {}, 'Export diagram ', sel),
+    el('p', { class: 'relhint' }, 'The visible part of the canvas, clipped to the view. Hidden objects are left out.'),
+    ta,
+    el('div', { class: 'acts' },
+      el('button', { type: 'button', class: 'btn', onclick: () => download(`diagram.${sel.value === 'tikz' ? 'tex' : 'asy'}`, new Blob([ta.value], { type: 'text/plain' })) }, 'Download'),
+      el('button', { type: 'button', class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(ta.value); toast('Copied'); } catch { ta.select(); } } }, 'Copy'),
+      el('button', { type: 'submit', class: 'btn primary' }, 'Close')));
+  dlg.append(form);
+  dlg.onclose = null;
+  dlg.showModal();
+}
+
+// ---------- templates ----------
+
+const TEMPLATES = {
+  'Triangle ABC': ['A = (-3, -2)', 'B = (4, -2)', 'C = (-0.6, 3.2)', 'a = Segment(B, C)', 'b = Segment(C, A)', 'c = Segment(A, B)'],
+  'Triangle with circumcircle': ['A = (-3, -2)', 'B = (4, -2)', 'C = (-0.6, 3.2)', 'a = Segment(B, C)', 'b = Segment(C, A)', 'c = Segment(A, B)', 'ω = Circumcircle(A, B, C)'],
+  'Triangle with incircle': ['A = (-3, -2)', 'B = (4, -2)', 'C = (-0.6, 3.2)', 'a = Segment(B, C)', 'b = Segment(C, A)', 'c = Segment(A, B)', 'I = Incenter(A, B, C)', 'ω = Incircle(A, B, C)'],
+  'Cyclic quadrilateral': ['ω = Circle((0, 0), 3)', 'A = Point(ω, 0.6)', 'B = Point(ω, 0.88)', 'C = Point(ω, 0.07)', 'D = Point(ω, 0.33)',
+    'a = Segment(A, B)', 'b = Segment(B, C)', 'c = Segment(C, D)', 'd = Segment(D, A)'],
+  'Two circles': ['O_1 = (-2, 0)', 'O_2 = (2.2, 0.4)', 'ω_1 = Circle(O_1, 2.5)', 'ω_2 = Circle(O_2, 2)'],
+};
+function applyTemplate(name) {
+  if (cons.objs.length && !confirm('Replace the current construction? (Undo brings it back.)')) return;
+  cons.load([]);
+  S.selection.clear();
+  for (const line of TEMPLATES[name]) cons.exec(line, defaultStyle);
+  S.settings.grid = S.settings.axes = false; saveSettings();
+  commit();
+  fitAll();
+}
+
 function showHelp() {
   const h = $('#help');
   h.textContent = '';
@@ -1284,10 +1492,15 @@ document.addEventListener('keydown', e => {
   if (ctrl && k.toLowerCase() === 'o') { e.preventDefault(); $('#file').click(); return; }
   if (ctrl && k.toLowerCase() === 'a') { e.preventDefault(); S.selection = new Set(cons.objs.filter(o => !o.style.hidden).map(o => o.name)); highlightRows(); refreshProps(); render(); return; }
   if (ctrl || e.altKey && k.length === 1) return;
+  if (S.step != null) {
+    if (k === 'Escape') { exitSteps(); return; }
+    if (k === 'ArrowRight' || k === ']' || k === 'PageDown') { e.preventDefault(); goStep(S.step + 1); return; }
+    if (k === 'ArrowLeft' || k === '[' || k === 'PageUp') { e.preventDefault(); goStep(S.step - 1); return; }
+  }
   if (k === 'Escape') {
     if (!$('#help').hidden) { $('#help').hidden = true; return; }
     if (!$('#menu').hidden || !$('#flyout').hidden) { closeMenu(); closeFlyout(); return; }
-    if (S.tsel.length) { resetTool(); hint(); return; }
+    if (S.tsel.length) { resetTool(); hint(); showRelations(); return; }
     if (S.tool !== 'move') { setTool('move'); return; }
     S.selection.clear(); refreshProps(); highlightRows(); render(); return;
   }
@@ -1373,4 +1586,4 @@ async function start() {
 start();
 
 // Exposed for the browser smoke test and for power users in the console.
-window.gd = { cons, view, S, exec: src => { const o = cons.exec(src, defaultStyle); commit(); return o; }, setTool, undo, redo, render, R, docJSON, encodeDoc, decodeDoc };
+window.gd = { applyTemplate, exportDiagram: f => exportDiagram(cons, R, f), enterSteps, goStep, exitSteps, cons, view, S, exec: src => { const o = cons.exec(src, defaultStyle); commit(); return o; }, setTool, undo, redo, render, R, docJSON, encodeDoc, decodeDoc };

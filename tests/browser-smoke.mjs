@@ -232,6 +232,43 @@ try {
   await key('?', 'Slash');
   check(await ev("!document.querySelector('#help').hidden"), 'help overlay opens');
   await key('Escape', 'Escape');
+  // --- olympiad features ------------------------------------------------------
+  await ev("window.confirm = () => true; gd.applyTemplate('Triangle with circumcircle'); true");
+  check(await ev("gd.cons.objs.length === 7 && !gd.S.settings.axes"), 'template: triangle with circumcircle, clean diagram');
+  await ev("gd.setTool('center'); true");
+  await click(-3, -2); await click(4, -2); await click(-0.6, 3.2);
+  for (let i = 0; i < 30 && !(await ev("document.querySelector('#dlg').open")); i++) await delay(50);
+  await ev("(() => { const s = document.querySelector('#dlg select'); s.value = '4'; document.querySelector('#dlg form').requestSubmit(); return true; })()");
+  await delay(60);
+  check(await ev("gd.cons.get('H')?.ast.f") === 'Orthocenter', 'triangle-centre tool made the orthocentre H');
+  await ev("gd.exec('O = Circumcenter(A, B, C)'); gd.exec('G = Centroid(A, B, C)'); gd.exec('P = (1, 2.5)'); true");
+  await ev("gd.setTool('relation'); true");
+  for (const n of ['O', 'G', 'H']) { const p = await val(n); await click(p.x, p.y); }
+  const rel = await ev("[...document.querySelectorAll('#rel li')].map(li => li.className + ':' + li.textContent).join(' | ')");
+  check(/^yes:.*collinear.*always/.test(rel), `relation checker: O, G, H always collinear (${rel.slice(0, 90)})`);
+  await click(8, 8); // empty space clears
+  const g = await val('G'), h = await val('H'), p0 = await val('P');
+  await ev("gd.exec('Q = (0, 0)'); true");
+  await click(g.x, g.y); await click(p0.x, p0.y); await click(0, 0);
+  const rel2 = await ev("document.querySelector('#rel li').className");
+  check(rel2 === 'no', 'relation checker: G, P, Q not collinear');
+  await ev("gd.exec('Z = Point(Line(A, B), 0.3)'); gd.exec('W = Point(Line(A, B), 0.7)'); true");
+  await click(8, 8);
+  for (const n of ['A', 'Z', 'W']) { const p = await val(n); await click(p.x, p.y); }
+  check(/yes:.*always/.test(await ev("document.querySelector('#rel li').className + ':' + document.querySelector('#rel li').textContent")), 'points on a line: collinear always');
+  await key('Escape', 'Escape'); await key('Escape', 'Escape');
+  // marks
+  await ev("gd.cons.get('a').style.ticks = 2; gd.cons.get('b').style.ticks = 2; gd.exec('α = Angle(B, A, C)'); gd.cons.get('α').style.arcs = 2; gd.render(); true");
+  // step-through
+  await ev("gd.enterSteps(); gd.goStep(3); true"); await delay(50);
+  const drawn = await ev("gd.cons.objs.filter(o => o._g).length");
+  check(drawn === 3, `step mode draws only the first 3 steps (${drawn})`);
+  await ev("gd.exitSteps(); true");
+  // export
+  const asy = await ev("gd.exportDiagram('asy')"), tikz = await ev("gd.exportDiagram('tikz')");
+  check(/unitsize/.test(asy) && /dot\("\$A\$"/.test(asy) && /draw\(circle/.test(asy), 'Asymptote export has points, labels and circles');
+  check(/\\begin\{tikzpicture\}/.test(tikz) && /circle \(/.test(tikz) && /\\end\{tikzpicture\}/.test(tikz), 'TikZ export is a complete picture');
+  if (process.env.EXPORT_DIR) { await writeFile(join(process.env.EXPORT_DIR, 'diagram.asy'), asy); await writeFile(join(process.env.EXPORT_DIR, 'diagram.tikz'), tikz); }
   // --- phone layout -------------------------------------------------------
   await client.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 800, deviceScaleFactor: 2, mobile: true });
   await delay(250);

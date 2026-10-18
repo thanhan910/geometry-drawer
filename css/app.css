@@ -172,6 +172,33 @@ body.noalg #algebra { display: none; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.danger { color: var(--danger); }
 
+/* relation checker, step bar */
+#rel {
+  position: absolute; right: 10px; top: 10px; width: 330px; max-height: calc(100% - 80px); overflow-y: auto;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 10px 12px;
+}
+.relh { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.relh b { color: var(--fg); }
+.relhint { color: var(--muted); font-size: 13px; margin: 4px 0; }
+.rels { list-style: none; margin: 0; padding: 0; }
+.rels li { display: flex; gap: 9px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13.5px; }
+.rels small { color: var(--muted); font-size: 12px; }
+.rels .mark { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: 12px; font-weight: 700; color: #fff; background: var(--muted); }
+.rels .yes .mark { background: #138d75; }
+.rels .here .mark { background: #c98a00; }
+.rels .no { color: var(--muted); }
+#steps {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); padding: 4px 6px; max-width: calc(100% - 20px);
+}
+#steps[hidden], #rel[hidden] { display: none; }
+.stxt { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; }
+.row.future { opacity: .35; }
+dialog:has(form.wide) { width: min(760px, calc(100vw - 32px)); }
+textarea.code { width: 100%; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: var(--panel); color: var(--fg); resize: vertical; }
+dialog h2 select { margin-left: 8px; font-size: 13px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+.fl select { padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--fg); }
+
 /* dialog, toast, help */
 dialog { border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); background: var(--bg); color: var(--fg); padding: 16px 18px; width: min(380px, calc(100vw - 32px)); }
 dialog::backdrop { background: rgba(10, 12, 16, .3); }
@@ -204,6 +231,8 @@ dialog h2 { font-size: 16px; margin: 0 0 12px; }
   main { flex-direction: column-reverse; }
   #algebra { width: auto; height: 38%; border-right: 0; border-top: 1px solid var(--line); }
   #props { left: 8px; right: 8px; width: auto; bottom: 8px; max-height: 60%; }
+  #rel { left: 8px; right: 8px; width: auto; }
+  .stxt { max-width: 140px; }
   #hint { max-width: calc(100% - 70px); font-size: 12px; }
   .cols { grid-template-columns: 1fr; }
   .cmds { columns: 1; }
