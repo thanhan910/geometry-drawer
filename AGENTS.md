@@ -126,6 +126,13 @@ calls `recompute(from)`.
 - `index.html` must keep its `<link rel="stylesheet" href="css/app.css">` and
   `<script type="module" src="js/app.js">` lines exactly as they are. The server
   inlines them by string match and refuses to start if they change.
+- **Chat apps cache the tool list.** ChatGPT web (`openai-mcp/1.0.0`) read
+  `tools/list` once, when the connector was created, and kept calling tools
+  from that copy, so the editor never appeared until it was refreshed.
+  Diagnose with `journalctl -u geometry-mcp`: a client that shows the editor
+  sends `resources/read:ui://geometry-drawer/editor…`. The ChatGPT desktop
+  app's *Plugins, then MCPs* screen is a Codex agent (`codex-mcp-client`)
+  and does not render MCP Apps.
 - Chromium runs a sandboxed srcdoc iframe out of process, so
   `widget-test.mjs` attaches to it as its own CDP target (`flatten`).
 - `mcp/` imports `../js/*.js` from this checkout. After any engine change,

@@ -129,6 +129,14 @@ createServer(async (req, res) => {
   } catch { json(res, 413, { jsonrpc: '2.0', error: { code: -32600, message: 'Request too large' }, id: null }); return; }
   let body;
   try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { json(res, 400, { jsonrpc: '2.0', error: { code: -32700, message: 'Parse error' }, id: null }); return; }
+  // One line per request for diagnosing clients ("did ChatGPT ever read the
+  // editor resource?"): client, methods and tool or resource names only, never
+  // scripts or other content.
+  const what = (Array.isArray(body) ? body : [body]).map(m => m && m.method
+    ? m.method + (m.params && m.params.name ? `:${m.params.name}` : m.params && m.params.uri ? `:${m.params.uri}` : '')
+      + (m.method === 'initialize' && m.params && m.params.clientInfo ? `(${m.params.clientInfo.name}/${m.params.clientInfo.version}${m.params.capabilities && m.params.capabilities.extensions ? ' ext:' + Object.keys(m.params.capabilities.extensions).join('+') : ''})` : '')
+    : 'response').join(',');
+  res.on('finish', () => console.log(`mcp ${res.statusCode} ${String(req.headers['user-agent'] || '-').slice(0, 60)} ${what}`));
   const server = buildServer();
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on('close', () => { transport.close(); server.close(); });

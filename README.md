@@ -125,9 +125,13 @@ title and explanation on a card.
   `/geometry-mcp/`.
 - **Claude (web or desktop):** Settings, then Connectors, then *Add custom
   connector*, and paste the URL.
-- **ChatGPT:** Settings, then Apps & Connectors (or Plugins, then MCPs, in
-  the desktop app). Add a custom MCP of type Streamable HTTP with the URL,
-  and leave the token and header fields empty.
+- **ChatGPT (web):** turn on Settings, then Apps & Connectors, then
+  Advanced, then Developer mode. Create a connector with the URL and no
+  authentication. ChatGPT reads the tool list once, when the connector is
+  created, so after the server's tools change, refresh or re-create it.
+  The desktop app's *Plugins, then MCPs* screen adds the server to its Codex
+  agent (`codex-mcp-client`), which can call the tools but does not show the
+  in-chat editor.
 - **Claude Code:**
   `claude mcp add --transport http geometry https://nbg5pc.taileeca1e.ts.net/geometry-mcp/mcp`
 - **Tools:** `geometry_language` returns the reference, and `draw_geometry`
@@ -155,7 +159,9 @@ node tests/run-tests.mjs       # engine tests: parser, commands, intersections, 
 node tests/browser-smoke.mjs   # drives the real page in headless Chromium
 node mcp/test.mjs              # MCP server, end to end, through the official MCP client
 node mcp/widget-test.mjs       # the in-chat editor in a sandboxed iframe, with a stand-in host
-bash scripts/deploy.sh         # all four tests, rsync to /var/www/geometry, restart geometry-mcp
+node mcp/apps-host-test.mjs    # the same against the official MCP Apps host library (AppBridge)
+sudo journalctl -u geometry-mcp | grep mcp   # one line per request: client, methods, tool or resource
+bash scripts/deploy.sh         # all five tests, rsync to /var/www/geometry, restart geometry-mcp
 sudo systemctl status geometry-mcp     # the MCP server (Node, port 5040, runs from mcp/)
 sudo journalctl -u geometry-mcp -f
 ```

@@ -6,12 +6,15 @@
   "main": "server.mjs",
   "scripts": {
     "start": "node server.mjs",
-    "test": "node test.mjs && node widget-test.mjs"
+    "test": "node test.mjs && node widget-test.mjs && node apps-host-test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
     "@resvg/resvg-js": "2.6.2",
     "esbuild": "0.28.2",
     "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/ext-apps": "1.7.5"
   }
 }
