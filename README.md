@@ -121,8 +121,13 @@ also returns a link that opens the figure in the app, with the assistant's
 title and explanation on a card.
 
 - **Server URL:** `https://nbg5pc.taileeca1e.ts.net/geometry-mcp/mcp`,
-  public, with no sign-in and nothing stored. A help page is at
-  `/geometry-mcp/`.
+  public, with no sign-in. A help page is at `/geometry-mcp/`.
+- **Short links:** each drawing gets a link like `…/geometry/#s=pin4moxlmmzy`.
+  The server stores the figure under that 12-character code, because AIs
+  retype links and a long self-contained link breaks if one character
+  changes. Figures are in `/var/lib/geometry-mcp/shares`, at most 200 KB
+  each and 20,000 in total, oldest removed first. Losing the directory
+  only breaks old short links.
 - **Claude (web or desktop):** Settings, then Connectors, then *Add custom
   connector*, and paste the URL.
 - **ChatGPT (web):** turn on Settings, then Apps & Connectors, then
@@ -189,5 +194,5 @@ the MCP server is down, run `sudo systemctl restart geometry-mcp`.
 
 GeoGebra's CAS, 3D, spreadsheet, probability and exam-mode views, lists and
 sequences, and its LaTeX text. User data never leaves the browser: there is no
-account and no server-side storage. The MCP server only computes what an
-assistant sends it and keeps nothing.
+account and no server-side storage. The MCP server keeps only the figure
+behind each short link it hands out.

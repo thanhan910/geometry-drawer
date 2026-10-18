@@ -13,11 +13,13 @@ Environment=PORT=5040
 Environment=HOST=127.0.0.1
 Environment=NODE_ENV=production
 ExecStart=/usr/bin/node server.mjs
+StateDirectory=geometry-mcp
+Environment=SHARE_DIR=/var/lib/geometry-mcp/shares
 Restart=on-failure
 RestartSec=3
 
-# Stateless and public: it needs to read its own code and the fonts, and
-# nothing else. No writes anywhere.
+# Public. It reads its own code and the fonts, and writes only the short-link
+# figure store in /var/lib/geometry-mcp (StateDirectory, bounded by the app).
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=read-only

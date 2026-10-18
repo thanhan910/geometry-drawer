@@ -312,6 +312,12 @@ try {
   await ev("gd.showTab('alg'); true");
   await ev(`(() => { const i = document.querySelector('#input'); i.value = 'A = (1, 1)'; i.form.requestSubmit(); i.value = 'SetColor(A, "green")'; i.form.requestSubmit(); return true; })()`);
   check(await ev("gd.cons.get('A').style.color") === '#138d75', 'styling statements work in the input bar');
+  // --- damaged share links explain themselves -------------------------------
+  await ev("location.hash = '#c=zDAMAGEDLINK'; location.reload(); true").catch(() => {});
+  await delay(1200);
+  for (let i = 0; i < 30; i++) { try { if (await ev('!!window.gd')) break; } catch { /* reloading */ } await delay(100); }
+  const toastText = await ev("document.querySelector('#toast').textContent");
+  check(/damaged or incomplete/.test(toastText), `a damaged link explains itself (${toastText})`);
   // --- phone layout -------------------------------------------------------
   await client.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 800, deviceScaleFactor: 2, mobile: true });
   await delay(250);

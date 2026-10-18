@@ -10,7 +10,7 @@ import { buildSync } from 'esbuild';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import { draw, APP_URL, LIMITS } from './draw.mjs';
+import { draw, APP_URL, LIMITS, readShare } from './draw.mjs';
 import { languageGuide } from '../js/guide.js';
 
 const PORT = +(process.env.PORT || 5040);
@@ -119,6 +119,15 @@ const json = (res, code, obj) => { res.writeHead(code, { 'content-type': 'applic
 createServer(async (req, res) => {
   const path = new URL(req.url, 'http://x').pathname;
   if (path === '/healthz') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok\n'); return; }
+  // Short links: the app fetches /s/<id> for #s=<id>. Content-addressed, so
+  // a stored figure never changes and can be cached for ever.
+  if (path.startsWith('/s/') && req.method === 'GET') {
+    const body = readShare(path.slice(3));
+    if (!body) { json(res, 404, { error: 'This figure link is unknown or has expired.' }); return; }
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'public, max-age=31536000, immutable' });
+    res.end(body);
+    return;
+  }
   if (path === '/' && req.method === 'GET') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(HELP_PAGE); return; }
   if (path !== '/mcp') { json(res, 404, { error: 'not found' }); return; }
   if (req.method !== 'POST') { json(res, 405, { jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed: this server is stateless, use POST.' }, id: null }); return; }

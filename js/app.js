@@ -1291,8 +1291,18 @@ async function decodeDoc(s) {
   let text;
   if (tag === 'z') text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
   else text = new TextDecoder().decode(bytes);
-  const d = JSON.parse(text);
-  return { format: 'geometry-drawer', version: 1, view: d.v, settings: d.s, objects: d.o, info: d.i && { title: String(d.i.t || ''), caption: String(d.i.c || '') } };
+  return docFromPayload(JSON.parse(text));
+}
+const docFromPayload = d => ({ format: 'geometry-drawer', version: 1, view: d.v, settings: d.s, objects: d.o, info: d.i && { title: String(d.i.t || ''), caption: String(d.i.c || '') } });
+// Short links (#s=<id>) made by the MCP server, which stores the figure.
+const SHARE_API = '/geometry-mcp/s/';
+async function fetchShared(id) {
+  if (!/^[0-9a-z]{12}$/.test(id)) throw new Error('this figure link is incomplete. Ask for a fresh link');
+  let r;
+  try { r = await fetch(SHARE_API + id); } catch { throw new Error('the figure server could not be reached'); }
+  if (r.status === 404) throw new Error('this figure link is unknown or has expired');
+  if (!r.ok) throw new Error(`the figure server answered ${r.status}`);
+  return docFromPayload(await r.json());
 }
 async function shareLink() {
   if (EMBED) return openInApp();
@@ -1926,8 +1936,14 @@ async function start() {
   R.resize(Math.max(50, st.width), Math.max(50, st.height), window.devicePixelRatio || 1);
   try {
     if (EMBED) { /* the figure comes from the chat host */ }
-    else if (location.hash.startsWith('#c=')) {
-      const doc = await decodeDoc(location.hash.slice(3));
+    else if (location.hash.startsWith('#c=') || location.hash.startsWith('#s=')) {
+      const isShort = location.hash.startsWith('#s=');
+      let doc;
+      try { doc = isShort ? await fetchShared(location.hash.slice(3)) : await decodeDoc(location.hash.slice(3)); }
+      catch (e) {
+        history.replaceState(null, '', location.pathname);
+        throw new Error(isShort ? e.message : 'this link is damaged or incomplete (an AI may have retyped it). Ask for a fresh link');
+      }
       loadDoc(doc);
       history.replaceState(null, '', location.pathname);
       if (doc.info && (doc.info.title || doc.info.caption)) S.pendingInfo = doc.info;
@@ -1936,7 +1952,7 @@ async function start() {
       const d = store.get('gd:doc');
       if (d) loadDoc(d);
     }
-  } catch (e) { toast(`Could not restore: ${e.message}`, 'error'); }
+  } catch (e) { toast(`Could not open the figure: ${e.message}.`, 'error'); }
   applyTheme();
   commit();
   viewChanged();

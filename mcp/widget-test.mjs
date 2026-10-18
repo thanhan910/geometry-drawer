@@ -21,7 +21,7 @@ const check = (c, m) => { console.log(`${c ? 'OK  ' : 'FAIL'} ${m}`); if (!c) fa
 
 // 1. get the viewer and a result from a real server
 const port = 5600 + Math.floor(Math.random() * 300);
-const server = spawn(process.execPath, [new URL('./server.mjs', import.meta.url).pathname], { env: { ...process.env, PORT: String(port) }, stdio: ['ignore', 'ignore', 'inherit'] });
+const server = spawn(process.execPath, [new URL('./server.mjs', import.meta.url).pathname], { env: { ...process.env, PORT: String(port), SHARE_DIR: `${tmpdir()}/gd-shares-test` }, stdio: ['ignore', 'ignore', 'inherit'] });
 for (let i = 0; i < 80; i++) { try { if ((await fetch(`http://127.0.0.1:${port}/healthz`)).ok) break; } catch { /* starting */ } await delay(100); }
 const client = new Client({ name: 'widget-test', version: '1' });
 await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`)));

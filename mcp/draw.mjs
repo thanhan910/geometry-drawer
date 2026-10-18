@@ -3,7 +3,9 @@
 // Kept apart from server.mjs so tests can call it without HTTP.
 
 import { deflateRawSync } from 'node:zlib';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import { Resvg } from '@resvg/resvg-js';
 import { Construction } from '../js/construction.js';
 import { runScript } from '../js/script.js';
@@ -21,10 +23,53 @@ export const LIMITS = { scriptChars: 20000, statements: 600, verify: 20, trials:
 const base64url = buf => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
 // The same share-link format as the app's "Copy share link".
-export function shareLink(cons, view, settings, info) {
+function sharePayload(cons, view, settings, info) {
   const payload = { v: view, s: settings, o: cons.toJSON() };
   if (info && (info.title || info.caption)) payload.i = { t: info.title || '', c: info.caption || '' };
-  return `${APP_URL}#c=z${base64url(deflateRawSync(Buffer.from(JSON.stringify(payload))))}`;
+  return payload;
+}
+// The long, self-contained link (the whole figure in the URL). Fine for a
+// button to open, too fragile for an AI to retype into its answer.
+export function shareLink(cons, view, settings, info) {
+  return `${APP_URL}#c=z${base64url(deflateRawSync(Buffer.from(JSON.stringify(sharePayload(cons, view, settings, info)))))}`;
+}
+
+// Short links: the figure is stored under a content hash and the link is
+// #s=<12 characters>, which survives an AI copying it. Bounded storage:
+// each figure ≤ 200 KB, at most SHARE_MAX files, oldest removed first.
+export const SHARE_DIR = process.env.SHARE_DIR || '/var/lib/geometry-mcp/shares';
+const SHARE_MAX = +(process.env.SHARE_MAX || 20000);
+export const SHARE_ID = /^[0-9a-z]{12}$/;
+export function storeShare(payload) {
+  const json = JSON.stringify(payload);
+  if (json.length > 200 * 1024) return null;
+  const id = BigInt('0x' + createHash('sha256').update(json).digest('hex').slice(0, 16)).toString(36).padStart(12, '0').slice(-12);
+  try {
+    mkdirSync(SHARE_DIR, { recursive: true });
+    const file = join(SHARE_DIR, `${id}.json`);
+    if (!existsSync(file)) {
+      const tmp = `${file}.${process.pid}.tmp`;
+      writeFileSync(tmp, json);
+      renameSync(tmp, file);
+      pruneShares();
+    }
+    return id;
+  } catch (e) {
+    console.error('share store failed', e.message);
+    return null;
+  }
+}
+let pruneCount = 0;
+function pruneShares() {
+  if (++pruneCount % 50 !== 1) return;          // check now and then, not on every write
+  const files = readdirSync(SHARE_DIR).filter(f => f.endsWith('.json'));
+  if (files.length <= SHARE_MAX) return;
+  const aged = files.map(f => ({ f, t: statSync(join(SHARE_DIR, f)).mtimeMs })).sort((a, b) => a.t - b.t);
+  for (const { f } of aged.slice(0, files.length - Math.floor(SHARE_MAX * 0.9))) { try { unlinkSync(join(SHARE_DIR, f)); } catch { /* raced */ } }
+}
+export function readShare(id) {
+  if (!SHARE_ID.test(id)) return null;
+  try { return readFileSync(join(SHARE_DIR, `${id}.json`), 'utf8'); } catch { return null; }
 }
 
 function rowText(o) {
@@ -90,9 +135,12 @@ export function draw({ script, title, caption, showAxes, showGrid, verify = [], 
     }
   });
 
-  const link = shareLink(cons, view, settings, { title, caption });
+  const longLink = shareLink(cons, view, settings, { title, caption });
+  const shareId = storeShare(sharePayload(cons, view, settings, { title, caption }));
+  const link = shareId ? `${APP_URL}#s=${shareId}` : longLink;
   const lines = [];
-  lines.push(`Open it in the app (interactive, draggable): ${link}`, '');
+  lines.push(`Link that opens the figure in the Geometry Drawer website, where the user can drag and keep drawing.`,
+    `Give the user this exact URL, copied character for character: ${link}`, '');
   if (res.errors.length) {
     lines.push(`ERRORS (${res.errors.length}); these lines were skipped:`);
     for (const e of res.errors.slice(0, 40)) lines.push(`- line ${e.line}: ${e.src} -> ${e.msg}`);

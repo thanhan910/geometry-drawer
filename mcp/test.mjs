@@ -10,9 +10,10 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { Construction } from '../js/construction.js';
 
 let url = process.argv[2], child = null;
+const shareDir = process.argv[2] ? null : (await import('node:fs/promises')).mkdtemp((await import('node:os')).tmpdir() + '/gd-shares-');
 if (!url) {
   const port = 5600 + Math.floor(Math.random() * 300);
-  child = spawn(process.execPath, [new URL('./server.mjs', import.meta.url).pathname], { env: { ...process.env, PORT: String(port) }, stdio: ['ignore', 'pipe', 'inherit'] });
+  child = spawn(process.execPath, [new URL('./server.mjs', import.meta.url).pathname], { env: { ...process.env, PORT: String(port), SHARE_DIR: await shareDir }, stdio: ['ignore', 'pipe', 'inherit'] });
   url = `http://127.0.0.1:${port}/mcp`;
   for (let i = 0; i < 50; i++) { try { if ((await fetch(url.replace('/mcp', '/healthz'))).ok) break; } catch { /* starting */ } await delay(100); }
 }
@@ -37,9 +38,14 @@ try {
   check(/AreCollinear\(O, G, H\): true, always \(40\/40\)/.test(text), 'theorem verified on random positions');
   check(/AreCollinear\(A, G, H\): false/.test(text), 'false statement reported false');
   check(/Distance\(A, B\): error, not a true\/false/.test(text), 'non-boolean verify explained');
-  const link = /https?:\/\/\S+#c=z(\S+)/.exec(text);
-  check(!!link, 'share link returned');
-  const payload = JSON.parse(inflateRawSync(Buffer.from(link[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64')).toString());
+  const link = /https?:\/\/\S+#s=([0-9a-z]{12})\b/.exec(text);
+  check(!!link, `short share link returned (${link && link[0]})`);
+  const sres = await fetch(url.replace(/\/mcp$/, `/s/${link[1]}`));
+  check(sres.ok && /immutable/.test(sres.headers.get('cache-control') || ''), 'short link resolves, cacheable');
+  const payload = await sres.json();
+  check((await fetch(url.replace(/\/mcp$/, '/s/zzzzzzzzzzzz'))).status === 404 && (await fetch(url.replace(/\/mcp$/, '/s/..%2Fetc')).then(r => r.status)) === 404, 'unknown or malformed ids are 404');
+  const long = r.structuredContent && r.structuredContent.doc;
+  check(!!long && long.o.length === payload.o.length, 'structured content matches the stored figure');
   const c = new Construction();
   check(c.load(payload.o).length === 0 && c.objs.length === 10 && payload.i.t === 'Euler line' && payload.s.axes === false, 'link decodes to the same 10 objects, title and clean view');
   const bad = await client.callTool({ name: 'draw_geometry', arguments: { script: '' } });

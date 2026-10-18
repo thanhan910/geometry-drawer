@@ -106,10 +106,17 @@ calls `recompute(from)`.
 - **User JavaScript only runs in the Web Worker** (`runJS` in `app.js`), with
   a 3 s kill, and is never saved in documents or share links. Shared links
   carry only the construction language, which cannot run code.
-- **The MCP server stays stateless and stores nothing.** That is the
-  justification for running it public with no auth: nginx throttles it to
-  60 requests a minute per client, limits the body to 256 KB, and
-  `draw.mjs` caps scripts at 20,000 characters and 600 statements.
+- **The MCP server stores only short-link figures**, content-addressed (the
+  id is a hash of the figure, so they never change), at most 200 KB each
+  and SHARE_MAX (20,000) in total, with the oldest pruned. That, plus nginx
+  throttling (60 requests a minute per client, 256 KB bodies) and the
+  script caps in `draw.mjs` (20,000 characters, 600 statements), is what
+  makes running it public with no auth acceptable. Do not add anything
+  that stores user-chosen data beyond this.
+- **Links an AI repeats must be short.** AIs retype links, and the long
+  `#c=` link (the whole figure, compressed) breaks on a single wrong
+  character. The tool text gives only the `#s=` short link. The long one is
+  still used where code opens it (the embedded editor's Open in app).
 - **Public, so nothing server-side.** The workspace exposure table is the
   authority on who can reach `/geometry/`. Adding any server storage or API
   would need a new exposure decision first.
