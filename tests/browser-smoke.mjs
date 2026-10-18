@@ -327,6 +327,26 @@ try {
   check(await ev("!!document.querySelector('#flyout .flyitem small') && document.querySelector('#tools .tb[data-g=circles]').getAttribute('aria-expanded') === 'true'"), 'each listed tool has a one-line description');
   await ev("document.querySelector('#tools .tb[data-g=circles]').click(); true");
   check(await ev("document.querySelector('#flyout').hidden"), 'a second click closes the list');
+  // With a mouse: hover opens the list, leaving closes it, and a canvas click
+  // that only dismisses an open list draws nothing.
+  const btnAt = g => ev(`(r => [r.left + r.width / 2, r.top + r.height / 2])(document.querySelector('#tools .tb[data-g=${g}]').getBoundingClientRect())`);
+  const [px, py] = await btnAt('points');
+  await mouse('mouseMoved', px, py, { buttons: 0 }); await delay(400);
+  check(await ev("!document.querySelector('#flyout').hidden && /Points/i.test(document.querySelector('#flyout .flyhead').textContent)"), 'hovering a tool group opens its list');
+  const [lx, ly] = await btnAt('lines');
+  await mouse('mouseMoved', lx, ly, { buttons: 0 }); await delay(120);
+  check(await ev("/Lines/i.test(document.querySelector('#flyout .flyhead').textContent)"), 'moving to the next group switches the list at once');
+  const [cx0, cy0] = await at(3, 1);
+  await mouse('mouseMoved', cx0, cy0, { buttons: 0 }); await delay(450);
+  check(await ev("document.querySelector('#flyout').hidden"), 'leaving the toolbar closes the list');
+  await ev("gd.cons.load([]); gd.setTool('point'); true");
+  await mouse('mouseMoved', px, py, { buttons: 0 }); await delay(400);
+  await mouse('mouseMoved', cx0, cy0, { buttons: 0 });
+  await mouse('mousePressed', cx0, cy0); await mouse('mouseReleased', cx0, cy0); await delay(60);
+  check(await ev("gd.cons.objs.length === 0 && document.querySelector('#flyout').hidden"), 'a canvas click that dismisses the list draws no point');
+  await click(3, 1);
+  check(await ev("gd.cons.objs.length === 1"), 'the next canvas click draws as usual');
+  await ev("gd.cons.load([]); gd.setTool('move'); true");
   const ctrlK = async () => { for (const type of ['keyDown', 'keyUp']) await client.send('Input.dispatchKeyEvent', { type, key: 'k', code: 'KeyK', modifiers: 2 }); await delay(80); };
   await ctrlK();
   check(await ev("!document.querySelector('#palette').hidden && document.activeElement.id === 'pq' && /Getting started/.test(document.querySelector('#pres').textContent)"), 'Ctrl+K opens search, with a short guide when empty');

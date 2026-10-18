@@ -570,10 +570,12 @@ canvas.addEventListener('pointerdown', e => {
   // Hit testing reads geometry cached by the last frame: flush a pending one
   // so a click right after a change sees what was just created.
   if (raf) { cancelAnimationFrame(raf); frame(); }
+  // A press that only dismisses an open tool list or menu does nothing else:
+  // with the Point tool it would otherwise leave an unwanted point.
+  if (!$('#flyout').hidden || !$('#menu').hidden) { closeFlyout(); closeMenu(); e.preventDefault(); return; }
   canvas.setPointerCapture(e.pointerId);
   const p = local(e);
   pointers.set(e.pointerId, p);
-  closeFlyout(); closeMenu();
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     drag = { type: 'pinch', d: Math.hypot(a.sx - b.sx, a.sy - b.sy), mx: (a.sx + b.sx) / 2, my: (a.sy + b.sy) / 2 };
@@ -791,10 +793,12 @@ function startAnim() { if (!animRaf) { animLast = 0; animRaf = requestAnimationF
 
 // ---------- toolbar ----------
 
-let flyGroup = null;
-// A group button picks its current tool and, if the group has more, opens the
-// list of all of them on the same click (a second click closes it). Right-click
-// and long-press open the list too.
+let flyGroup = null, flyOpenT = 0, flyCloseT = 0, lastPointer = '';
+// Tool groups. With a mouse, hovering a group opens the list of all its tools
+// (after a short pause, so passing over the toolbar does not flash menus) and
+// leaving it closes the list; a click picks the group's current tool. On touch
+// (no hover) a tap picks the tool and opens the list; a second tap closes it.
+// Right-click and long-press open the list too.
 function renderToolbar() {
   const nav = $('#tools');
   nav.textContent = '';
@@ -805,24 +809,42 @@ function renderToolbar() {
     const more = tools.length > 1;
     const b = el('button', {
       class: 'tb' + (active ? ' on' : '') + (more ? ' grp' : ''), 'data-g': g,
-      title: `${label}: ${cur.name}${cur.key ? ` (${cur.key.toUpperCase()})` : ''}${more ? ` - click to see all ${tools.length} tools` : ''}`,
+      title: `${label}: ${cur.name}${cur.key ? ` (${cur.key.toUpperCase()})` : ''}${more ? ` - ${tools.length} tools, hover or right-click to see them` : ''}`,
       'aria-label': `${cur.name}${more ? `, ${label}: ${tools.length} tools` : ''}`, 'aria-pressed': active ? 'true' : 'false',
       'aria-haspopup': more ? 'menu' : null,
-      onclick: () => {
-        if (more && flyGroup === g && !$('#flyout').hidden) { closeFlyout(); return; }
+      onclick: ev => {
+        const mouse = ev.detail > 0 && lastPointer === 'mouse';
+        const open = flyGroup === g && !$('#flyout').hidden;
         if (S.tool !== cur.id) setTool(cur.id);
-        if (more) toggleFlyout(g, $(`#tools .tb[data-g="${g}"]`));
+        if (mouse || (more && open)) closeFlyout();
+        else if (more) openFlyout(g, $(`#tools .tb[data-g="${g}"]`));
       },
       html: cur.svg + (more ? '<span class="more" aria-hidden="true"></span>' : ''),
     });
     b.addEventListener('contextmenu', ev => { ev.preventDefault(); toggleFlyout(g, b); });
+    b.addEventListener('pointerenter', ev => { if (ev.pointerType === 'mouse') hoverFlyout(more ? g : null, b); });
+    b.addEventListener('pointerleave', ev => { if (ev.pointerType === 'mouse') flyCloseSoon(); });
     let press = 0;
-    b.addEventListener('pointerdown', ev => { if (ev.pointerType === 'mouse') return; press = setTimeout(() => { press = -1; toggleFlyout(g, b); }, 450); });
+    b.addEventListener('pointerdown', ev => { lastPointer = ev.pointerType; if (ev.pointerType === 'mouse') return; press = setTimeout(() => { press = -1; openFlyout(g, b); }, 450); });
     b.addEventListener('pointerup', ev => { if (press === -1) ev.stopPropagation(); clearTimeout(press); });
     nav.append(b);
   }
   toolsOverflow();
 }
+// Open on hover after a pause; moving straight from one open list to the next
+// group switches at once.
+function hoverFlyout(g, anchor) {
+  clearTimeout(flyOpenT); clearTimeout(flyCloseT);
+  if (!g) { flyCloseSoon(); return; }
+  if (flyGroup === g && !$('#flyout').hidden) return;
+  flyOpenT = setTimeout(() => openFlyout(g, anchor), $('#flyout').hidden ? 220 : 0);
+}
+function flyCloseSoon() {
+  clearTimeout(flyOpenT); clearTimeout(flyCloseT);
+  flyCloseT = setTimeout(closeFlyout, 300);
+}
+$('#flyout').addEventListener('pointerenter', () => clearTimeout(flyCloseT));
+$('#flyout').addEventListener('pointerleave', ev => { if (ev.pointerType === 'mouse') flyCloseSoon(); });
 // A fade at the toolbar's edge when some groups are scrolled out of view
 // (narrow windows, chat side panels); the mouse wheel scrolls it sideways.
 function toolsOverflow() {
@@ -837,8 +859,12 @@ $('#tools').addEventListener('wheel', ev => {
   ev.preventDefault(); n.scrollLeft += ev.deltaY;
 }, { passive: false });
 function toggleFlyout(g, anchor) {
+  if (flyGroup === g && !$('#flyout').hidden) closeFlyout(); else openFlyout(g, anchor);
+}
+function openFlyout(g, anchor) {
   const f = $('#flyout');
-  if (flyGroup === g && !f.hidden) return closeFlyout();
+  clearTimeout(flyCloseT);
+  if (!anchor || !anchor.isConnected) anchor = $(`#tools .tb[data-g="${g}"]`);
   flyGroup = g;
   f.textContent = '';
   const label = GROUPS.find(x => x[0] === g)[1];
@@ -853,7 +879,7 @@ function toggleFlyout(g, anchor) {
   f.style.left = Math.max(8, Math.min(innerWidth - f.offsetWidth - 8, r.left)) + 'px';
   f.style.top = r.bottom + 4 + 'px';
 }
-function closeFlyout() { $('#flyout').hidden = true; flyGroup = null; document.querySelectorAll('#tools .tb[aria-expanded]').forEach(x => x.setAttribute('aria-expanded', 'false')); }
+function closeFlyout() { clearTimeout(flyOpenT); clearTimeout(flyCloseT); $('#flyout').hidden = true; flyGroup = null; document.querySelectorAll('#tools .tb[aria-expanded]').forEach(x => x.setAttribute('aria-expanded', 'false')); }
 
 // ---------- algebra view ----------
 
@@ -890,7 +916,7 @@ function refreshAlgebra() {
   const shown = cons.objs.filter(o => S.settings.showAux || !o.style.aux);
   if (!shown.length) {
     list.append(el('div', { class: 'empty' },
-      el('p', {}, 'Pick a tool above (click a group to see all its tools), search everything with Ctrl+K, or type below:'),
+      el('p', {}, 'Pick a tool above (hover over a group to see all its tools), search everything with Ctrl+K, or type below:'),
       ...['A = (1, 2)', 'Circle(A, 3)', 'f(x) = x^2 - 2', 'y = 2x + 1', 'x^2/9 + y^2/4 = 1', 'a = 2'].map(s =>
         el('button', { class: 'ex', onclick: () => { $('#input').value = s; $('#input').focus(); } }, s))));
     return;
@@ -1925,7 +1951,7 @@ function insertCommand(name, sig) {
 const palette = createPalette({
   entries: paletteEntries,
   guide: [
-    'Click a toolbar group to see all its tools; a ▾ marks groups with more.',
+    'Hover over a toolbar group (or right-click it) to see all its tools; a ▾ marks groups with more.',
     'With a tool chosen, click the canvas or existing objects. The hint at the bottom says what to click next.',
     'Type in the input bar: A = (1, 2), Circle(A, 3), f(x) = x^2.',
     'Select an object to change its colour, style and label. Ctrl+Z undoes.',
@@ -1939,7 +1965,7 @@ $('#btnSearch').addEventListener('click', () => openSearch());
 function showTip() {
   if (EMBED || store.get('gd:tip')) return;
   const tip = el('div', { id: 'tip', role: 'note' },
-    el('span', {}, el('b', {}, 'New here? '), 'Click a toolbar group to see its tools, or search everything with ', el('kbd', {}, 'Ctrl K'), '. Press ', el('kbd', {}, '?'), ' for all shortcuts.'),
+    el('span', {}, el('b', {}, 'New here? '), 'Hover over a toolbar group to see its tools, or search everything with ', el('kbd', {}, 'Ctrl K'), '. Press ', el('kbd', {}, '?'), ' for all shortcuts.'),
     el('button', { class: 'btn small primary', onclick: () => openSearch() }, 'Search'),
     el('button', { class: 'ib small', 'aria-label': 'Dismiss', title: 'Dismiss', onclick: hideTip, html: '✕' }));
   $('#stage').append(tip);

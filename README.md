@@ -102,8 +102,9 @@ Inspired by [GeoGebra](https://www.geogebra.org); see
   time. *New from template* starts a triangle, a triangle with its
   circumcircle or incircle, a cyclic quadrilateral, or two circles, and turns
   on the clean diagram (no axes or grid).
-- **Finding things:** click a toolbar group (a ▾ marks groups with more) to
-  see all its tools, each with a one-line description. **Search** (the box at
+- **Finding things:** hover over a toolbar group (a ▾ marks groups with
+  more) to see all its tools, each with a one-line description; on a touch
+  screen, tap it. Clicking the canvas while a list is open only closes it. **Search** (the box at
   the top right, or `Ctrl K`) finds tools, menu actions, theorem demos,
   templates and every command, including by everyday words ("eraser" finds
   Delete). With nothing typed it shows a short getting-started guide.
