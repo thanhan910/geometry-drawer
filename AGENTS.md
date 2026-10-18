@@ -115,8 +115,9 @@ calls `recompute(from)`.
 - **User JavaScript only runs in a Web Worker inside `sandbox.html`**
   (`runJS` in `app.js`), framed with `sandbox="allow-scripts"`: an opaque
   origin whose CSP (meta, and an Nginx header) allows no network. This
-  matters because `/geometry/` shares its origin with tailnet-only tools such
-  as `/launcher/`: same-origin code could read them, CSRF tokens included.
+  matters because `/geometry/` shares its origin with tailnet-only tools
+  that start real work: same-origin code could read them, CSRF tokens
+  included. (The host repository's exposure table lists them.)
   The page's own CSP (`worker-src 'none'`) stops a worker being started
   outside the frame. Embedded in a chat, the plain worker is used, since the
   host's frame is already a throwaway origin. 3 s kill; JavaScript is never

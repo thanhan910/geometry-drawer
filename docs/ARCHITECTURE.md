@@ -1,8 +1,9 @@
 # Geometry Drawer: Architecture and Production Plan
 
-As of 2026-10-18. This is the repository copy of the Claude Docs doc of the
-same name: the text matches the doc, and the diagrams are its renders, in
-`docs/img/`.
+As of 2026-10-18. This is the repository copy of the operator's private
+Claude Docs doc of the same name, with details of the host's other services
+left out because this repository is public. The diagrams are renders of the
+doc's drawings, in `docs/img/`.
 
 Geometry Drawer works well for you and the people you share links with, but it is not yet ready to be a public product. The code is in good shape; what must change is where it runs, what it shares a web address with, and how the short-link store is protected.
 
@@ -55,14 +56,14 @@ The application layer is close to production quality; the hosting and operations
 
 ## Security and privacy
 
-The most serious remaining risk is that the public service runs on the same machine as your vault and agent tools. Phase 0 removed the risk of user JavaScript reaching your private tools. Rows are ordered most serious first.
+The most serious remaining risk is that the public service runs on the same machine as your private services. Phase 0 removed the risk of user JavaScript reaching your private tools. Rows are ordered most serious first.
 
 | Risk | Severity | Status | How it could happen | Fix |
 | --- | --- | --- | --- | --- |
-| Same machine as the vault | High | Open | A flaw in the public Node service would run on the box that holds your vault and agent tools. The systemd hardening (read-only home, read-only system, own state folder) limits but does not remove this | Move the public service off the mini PC (Phase 1) |
+| Same machine as private services | High | Open | A flaw in the public Node service would run on the box that runs your private services. The systemd hardening (read-only home, read-only system, own state folder) limits but does not remove this | Move the public service off the mini PC (Phase 1) |
 | Short links as free anonymous hosting | Medium | Open | Anyone can store a title, a 1,500 character caption and text objects under your domain, then share that link for spam or phishing | Abuse report link on the title card, takedown by id, expiry (Phase 2) |
 | Rate limit by client address | Medium | Open | ChatGPT and Claude call from their own servers, so every ChatGPT user shares one 60 a minute bucket: too tight for real use, too loose against abuse | Limit per platform plus a global concurrency cap (Phase 2) |
-| Shared origin with private tools | Low | Reduced | Was high: Script panel JavaScript ran on the same origin as `/launcher/`, `/agents/`, `/cost-register/` and `/vault/`, and could read them. Now it runs in `sandbox.html` with an opaque origin and no network, and the page's policy blocks inline scripts and workers. What remains: a bug in the page itself would still run on this origin | Done in Phase 0; own domain in Phase 1 removes the rest |
+| Shared origin with private tools | Low | Reduced | Was high: Script panel JavaScript ran on the same origin as the host's tailnet-only services, and could read them. Now it runs in `sandbox.html` with an opaque origin and no network, and the page's policy blocks inline scripts and workers. What remains: a bug in the page itself would still run on this origin | Done in Phase 0; own domain in Phase 1 removes the rest |
 | Short-link eviction | Low | Reduced | Was: oldest removed first, so a spammer could push out every link in hours. Now the least recently used go first, opening a link keeps it, and new links are capped at about 300 an hour per worker (two workers), so a flood of 20,000 takes over 30 hours and spares any link opened meanwhile | Done in Phase 0; expiry by age in Phase 1 |
 | One heavy drawing blocks everyone | Low | Fixed | Was: drawings ran on the main thread with no time limit. Now each runs in one of two worker threads and is stopped after 10 seconds; the main thread stays free | Done in Phase 0 |
 | Wrong privacy statement | Low | Fixed | The help page said nothing is stored. It now says what is kept (the figure behind each short link) and what logs record | Done in Phase 0; a full privacy notice in Phase 2 |
