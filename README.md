@@ -7,8 +7,25 @@ server. It opens instantly, and every tool has a one-key shortcut.
 **URL:** `https://nbg5pc.taileeca1e.ts.net/geometry/`, **public** (operator
 decision, 2026-10-18). It is a static page: constructions stay in the
 visitor's browser. The only thing kept on the server is the figure behind each
-AI short link (see below). Architecture, security review and the production
-plan: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+AI short link (see below).
+
+Inspired by [GeoGebra](https://www.geogebra.org); see
+[Acknowledgements](#acknowledgements).
+
+## Documentation
+
+- **In the app:** press `?` for the help panel: every tool, shortcut and
+  command, with examples. **Copy AI prompt** in the Script panel copies the
+  full language reference.
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md):** how it is built, how a
+  request flows from an AI chat, the security and privacy review, and the
+  production plan.
+- **[AGENTS.md](AGENTS.md):** how the code works, its invariants and gotchas,
+  for anyone (or any AI assistant) changing it.
+- **Docs site:** this README and the architecture page are also published at
+  `https://nbg5pc.taileeca1e.ts.net/docs/`, under Geometry Drawer.
+- **MCP server help page:** `https://nbg5pc.taileeca1e.ts.net/geometry-mcp/`,
+  how to connect Claude, ChatGPT or another AI assistant.
 
 ## What it does
 
@@ -204,3 +221,18 @@ GeoGebra's CAS, 3D, spreadsheet, probability and exam-mode views, lists and
 sequences, and its LaTeX text. User data never leaves the browser: there is no
 account and no server-side storage. The MCP server keeps only the figure
 behind each short link it hands out.
+
+## Acknowledgements
+
+- **[GeoGebra](https://www.geogebra.org)**, whose Geometry and Graphing apps
+  inspired this one: the tool set, the algebra view beside the canvas and the
+  command names follow its lead. Geometry Drawer is an independent project,
+  written from scratch, and is not affiliated with or endorsed by GeoGebra. It
+  uses none of GeoGebra's code or assets. GeoGebra is a trademark of GeoGebra
+  GmbH.
+- **Clark Kimberling's
+  [Encyclopedia of Triangle Centers](https://faculty.evansville.edu/ck6/encyclopedia/ETC.html)**,
+  the source of the X(n) numbering and the barycentric definitions behind
+  `TriangleCenter`.
+- **[Model Context Protocol](https://modelcontextprotocol.io)** and its
+  official SDK, which the AI connector is built on.
