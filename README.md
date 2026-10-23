@@ -203,11 +203,6 @@ sudo systemctl status geometry-mcp     # the MCP server (Node, port 5040, runs f
 sudo journalctl -u geometry-mcp -f
 ```
 
-To set up the MCP server on a fresh machine, run `cd mcp && npm ci --omit=dev`,
-then
-`sudo cp mcp/geometry-mcp.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now geometry-mcp`.
-The Nginx routes are in `server-g5-setup-01`.
-
 To develop locally, serve the folder with any static server, for example
 `python3 -m http.server`, and open it. The page uses ES modules, so
 `file://` will not work.
@@ -221,6 +216,37 @@ To check it, run
 which asserts the page, its script and the MCP health check, on the tailnet
 and publicly. If the page is missing, run `bash scripts/deploy.sh` again. If
 the MCP server is down, run `sudo systemctl restart geometry-mcp`.
+
+## Moving to another machine
+
+Everything is in git except the short-link store, `/var/lib/geometry-mcp/shares`
+(at most 20,000 small figure files). Losing it loses nothing but old `#s=`
+short links, which then open an empty page; new links keep working.
+
+On the old machine, if it still runs, save the store:
+
+```bash
+sudo tar czf ~/geometry-shares.tar.gz -C /var/lib/geometry-mcp shares
+```
+
+On the new one, with Node 22+, `rsync` and `/usr/bin/chromium-browser`
+(the deploy runs the browser smoke test):
+
+```bash
+git clone https://github.com/thanhan910/geometry-drawer.git ~/Documents/GitHub/geometry-drawer
+cd ~/Documents/GitHub/geometry-drawer
+(cd mcp && npm ci --omit=dev)
+sudo cp mcp/geometry-mcp.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now geometry-mcp
+# optional, to keep old short links (the unit runs as an:an)
+sudo tar xzf ~/geometry-shares.tar.gz -C /var/lib/geometry-mcp
+sudo chown -R an:an /var/lib/geometry-mcp/shares
+bash scripts/deploy.sh      # tests, copy to /var/www/geometry, restart
+```
+
+The Nginx routes and the exposure switches are part of the host
+(`server-g5-setup-01`, `REBUILD-RUNBOOK.md`). Prove it with
+`bash ~/Documents/GitHub/server-g5-setup-01/scripts/verify-deployment.sh`.
 
 ## Not included
 
